@@ -5,6 +5,10 @@ import {
   calculateCaptionedVideoMetadata,
 } from "./CaptionedVideo";
 import { TitleCard } from "./TitleCard";
+import {
+  BIRTHDAY_FRAMES,
+  BirthdayGreeting,
+} from "./birthday/BirthdayGreeting";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -42,6 +46,18 @@ export const RemotionRoot: React.FC = () => {
             subtitle: "Made with Remotion",
             accentColor: "#facc15",
           }}
+        />
+      </Folder>
+      <Folder name="Greetings">
+        {/* Vertical birthday greeting from three photos, cut to a music-box tune.
+            Texts and photo paths are edited in src/birthday/BirthdayGreeting.tsx. */}
+        <Composition
+          id="BirthdayGreeting"
+          component={BirthdayGreeting}
+          durationInFrames={BIRTHDAY_FRAMES}
+          fps={30}
+          width={1080}
+          height={1920}
         />
       </Folder>
     </>

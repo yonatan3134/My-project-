@@ -88,6 +88,8 @@ Before `npx remotion ...` or `npx hyperframes ...` in a fresh shell, run
 - Compositions are registered in `remotion/src/Root.tsx`:
   - `CaptionedVideo`: a clip plus word-highlight captions; size and length come from the video (`calculateMetadata`). Props: `videoSrc`, `captionsSrc`, `highlightColor`, `combineWithinMs`.
   - `TitleCard`: animated title, accent line, subtitle.
+  - `BirthdayGreeting`: vertical 36 s photo greeting (title with balloons, three photo scenes, finale with confetti), cut to a music-box tune. Texts, photo paths and each photo's `focus` are inline in `remotion/src/birthday/BirthdayGreeting.tsx`; photos go in `remotion/public/clips/birthday/` (not in git).
+- Music without a library: `.venv/bin/python scripts/birthday-tune.py` synthesizes the music-box "Happy Birthday" (public domain melody) into `remotion/public/music/`. Bars are 1.8 s apart starting at 3.6 s, so cuts placed there land on the beat.
 - Render: `cd remotion && npx remotion render <CompositionId> ../out/<name>.mp4 [--props='{"...":"..."}']`. Frames only: `npx remotion still <id> out.png --frame=60`.
 - Preview: `cd remotion && npx remotion studio --no-open` (prints the URL).
 - Fonts: local files only (`@remotion/fonts`). `@remotion/google-fonts` fails in cloud sessions because the render browser cannot reach the font server.

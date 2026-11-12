@@ -7,10 +7,9 @@ import {
   useVideoConfig,
 } from "remotion";
 import { FONT_FAMILY } from "./lib/fonts";
+import { directionOf } from "./lib/rtl";
 
 const fontFamily = FONT_FAMILY;
-
-const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
 
 export type TitleCardProps = {
   readonly title: string;
@@ -26,7 +25,7 @@ export const TitleCard: React.FC<TitleCardProps> = ({
 }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames, width } = useVideoConfig();
-  const dir = RTL.test(title) ? "rtl" : "ltr";
+  const dir = directionOf(title);
 
   return (
     <AbsoluteFill

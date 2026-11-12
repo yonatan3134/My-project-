@@ -11,13 +11,10 @@ import {
   useVideoConfig,
 } from "remotion";
 import { FONT_FAMILY } from "./lib/fonts";
+import { isRtl } from "./lib/rtl";
 
 const fontFamily = FONT_FAMILY;
 const FONT_WEIGHT = 800;
-
-const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
-const isRtl = (words: string[]) =>
-  words.filter((word) => RTL.test(word)).length > words.length / 2;
 
 type CaptionPageProps = {
   readonly page: TikTokPage;
