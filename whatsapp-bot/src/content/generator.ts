@@ -25,6 +25,10 @@ export interface RefillResult {
 const KINDS: PostKind[] = ["text", "poll", "image", "video"];
 const SOURCE_REFRESH_MS = 45 * MINUTE;
 const MAX_SOURCES_PER_CALL = 4;
+/** a fan channel carries at most this many news posts a day; the rest of its posts are polls and questions */
+const FANDOM_NEWS_PER_DAY = 3;
+const FANDOM_NEWS_WAITING = 2;
+const NEWS_MAX_AGE_MS = 48 * HOUR;
 
 /** Splits `total` posts between the kinds in proportion to their weights (largest remainder). */
 export function splitCounts(formats: Formats, total: number): Record<PostKind, number> {
@@ -159,7 +163,16 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
   result.queued += await refillSefaria(ctx, channel, now);
 
   await refreshSources(ctx, channel, now);
-  const sources: SourceItem[] = mode === "creative" ? [] : store.newSourceItems(channel.id, MAX_SOURCES_PER_CALL);
+  // News is taken a little at a time, newest first, so a busy day does not turn a fan channel
+  // into a news ticker or leave a queue full of yesterday's headlines.
+  let sources: SourceItem[] = [];
+  if (mode !== "creative") {
+    const waiting = store.readyNewsCount(channel.id);
+    const sentToday = store.newsSentOnDay(channel.id, dayKey(now, settings.timezone));
+    const perDay = mode === "news" ? (channel.maxPerDay ?? settings.newsMaxPerDay) : FANDOM_NEWS_PER_DAY;
+    const room = Math.min(mode === "news" ? perDay - waiting : FANDOM_NEWS_WAITING - waiting, perDay - sentToday - waiting);
+    sources = store.newSourceItems(channel.id, Math.min(MAX_SOURCES_PER_CALL, room), now - NEWS_MAX_AGE_MS);
+  }
   const ready = store.readyCount(channel.id);
 
   if (mode === "news") {

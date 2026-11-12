@@ -63,10 +63,10 @@ test("video post", { skip: !(await ffmpegAvailable()) && "ffmpeg not installed" 
   assert.deepEqual(uploads, [{ mediaType: "video", bytes: clip.mp4.length }]);
 });
 
-test("only owners and admins may post", () => {
+test("followers and guests never post; an unreported role is left for WhatsApp to decide", () => {
   assert.equal(canPost("OWNER"), true);
   assert.equal(canPost("ADMIN"), true);
   assert.equal(canPost("SUBSCRIBER"), false);
   assert.equal(canPost("GUEST"), false);
-  assert.equal(canPost(null), false);
+  assert.equal(canPost(null), true);
 });

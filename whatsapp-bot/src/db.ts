@@ -422,11 +422,27 @@ export class Store {
     return added;
   }
 
-  newSourceItems(channelId: string, limit: number): SourceItem[] {
-    return this.db
-      .prepare("SELECT * FROM source_items WHERE channel_id = ? AND state = 'new' ORDER BY published_at DESC, id DESC LIMIT ?")
-      .all(channelId, limit) as SourceItem[];
+  /** Unused items, newest first. Items published before `notBefore` are too old to be news. */
+  newSourceItems(channelId: string, limit: number, notBefore = 0): SourceItem[] {
+    if (limit <= 0) return [];
+    return this.q(
+      "SELECT * FROM source_items WHERE channel_id = ? AND state = 'new' AND (published_at = 0 OR published_at >= ?) ORDER BY published_at DESC, id DESC LIMIT ?",
+    ).all(channelId, notBefore, limit) as SourceItem[];
   }
+
+  /** News posts of a channel that are waiting in the queue. */
+  readyNewsCount(channelId: string): number {
+    const r = this.q("SELECT COUNT(*) AS n FROM queue WHERE channel_id = ? AND status = 'ready' AND source_item_id IS NOT NULL").get(channelId) as { n: number };
+    return r.n;
+  }
+
+  /** News posts a channel has published on a given day. */
+  newsSentOnDay(channelId: string, day: string): number {
+    const r = this.q("SELECT COUNT(*) AS n FROM queue WHERE channel_id = ? AND day_key = ? AND status = 'sent' AND source_item_id IS NOT NULL").get(channelId, day) as { n: number };
+    return r.n;
+  }
+
+
 
   markSourceItem(id: number, state: "used" | "skipped"): void {
     this.q("UPDATE source_items SET state = ? WHERE id = ?").run(state, id);

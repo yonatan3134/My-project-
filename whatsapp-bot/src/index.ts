@@ -11,7 +11,7 @@ import { DefaultMedia } from "./media/maker.js";
 import { ffmpegAvailable } from "./media/video.js";
 import { DB_PATH, TMP_DIR, ensureDirs } from "./paths.js";
 import { Scheduler, postingChannels } from "./scheduler.js";
-import { HOUR, MINUTE, dayKey } from "./time.js";
+import { HOUR, MINUTE, dayKey, sleep } from "./time.js";
 import { recentPostTexts, resolveChannels } from "./wa/channels.js";
 import { WaClient } from "./wa/client.js";
 import { DryRunSender, WaSender, type Sender } from "./wa/sender.js";
@@ -99,6 +99,7 @@ async function main(): Promise<void> {
       } catch (err) {
         store.event(now(), "info", "style_fetch_failed", (err as Error).message, c.id);
       }
+      await sleep(1000);
     }
   }
 

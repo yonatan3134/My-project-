@@ -11,8 +11,14 @@ export interface ChannelInfo {
   subscribers: number | null;
 }
 
-/** The roles that are allowed to post in a channel. */
+/**
+ * Whether the bot should try to post in a channel. Owners and admins may.
+ * When WhatsApp did not report a role at all, the bot still tries: a real
+ * lack of permission then shows up as a rejected send, which is better than
+ * staying silent everywhere because one field was missing from the answer.
+ */
 export function canPost(role: string | null | undefined): boolean {
+  if (role == null || role === "") return true;
   return role === "OWNER" || role === "ADMIN";
 }
 
@@ -68,7 +74,7 @@ export async function resolveChannels(
           id: c.id,
           name: info.name || c.name,
           status: canPost(info.role) ? "ok" : "not_admin",
-          detail: `${info.role ?? "no role"}${info.subscribers !== null ? `, ${info.subscribers} followers` : ""}`,
+          detail: `${info.role ?? "role unknown"}${info.subscribers !== null ? `, ${info.subscribers} followers` : ""}`,
         });
       }
     } catch (err) {
