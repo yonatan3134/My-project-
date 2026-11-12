@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+      body {
+        font-family: "Inter", sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="12.97"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Footage with its own sound -->
+      <video
+        id="a-roll"
+        class="clip"
+        src="assets/sample.mp4"
+        playsinline
+        data-has-audio="true"
+        data-start="0"
+        data-duration="12.97"
+        data-track-index="0"
+        style="position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; z-index: 1"
+      ></video>
+
+      <!-- Title card over the first seconds; text and colour are set here -->
+      <div
+        id="lower-third"
+        data-composition-id="lower-third"
+        data-composition-src="compositions/lower-third.html"
+        data-variable-values='{"title":"Video editor demo","subtitle":"Whisper + HyperFrames","accent":"#facc15"}'
+        data-start="0.3"
+        data-duration="4"
+        data-track-index="1"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+        style="z-index: 5"
+      ></div>
+
+      <!-- Captions generated from the Whisper transcript: python3 scripts/hf-captions.py -->
+      <div
+        id="captions"
+        data-composition-id="captions"
+        data-composition-src="compositions/captions.html"
+        data-start="0"
+        data-duration="12.97"
+        data-track-index="9"
+        data-track-kind="captions"
+        data-width="1920"
+        data-height="1080"
+        style="z-index: 9"
+      ></div>
+    </div>
+
+    <script>
+      // The root only hosts media and scenes; each scene animates itself.
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

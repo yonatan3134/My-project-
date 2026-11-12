@@ -1,0 +1,8 @@
+{
+  "name": "hyperframes-workspace",
+  "private": true,
+  "description": "HyperFrames CLI for the projects in projects/",
+  "devDependencies": {
+    "hyperframes": "0.9.38"
+  }
+}

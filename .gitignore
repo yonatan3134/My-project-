@@ -1,0 +1,23 @@
+# Dependencies and local tool state
+node_modules/
+.venv/
+__pycache__/
+.hyperframes/
+.DS_Store
+.env
+
+# Media is large and usually not yours to redistribute: keep it out of git.
+# The folders themselves stay (via .gitkeep).
+media/raw/*
+media/work/*
+media/audio/*
+media/transcripts/*
+out/*
+remotion/public/clips/*
+!**/.gitkeep
+
+# Rendered output inside the tool projects
+remotion/out/
+remotion/dist/
+hyperframes/projects/*/renders/
+hyperframes/projects/*/out/

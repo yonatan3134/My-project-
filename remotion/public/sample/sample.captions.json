@@ -1,0 +1,261 @@
+[
+  {
+    "text": " Welcome",
+    "startMs": 0,
+    "endMs": 520,
+    "timestampMs": 260,
+    "confidence": 0.807
+  },
+  {
+    "text": " to",
+    "startMs": 520,
+    "endMs": 720,
+    "timestampMs": 620,
+    "confidence": 0.993
+  },
+  {
+    "text": " the",
+    "startMs": 720,
+    "endMs": 840,
+    "timestampMs": 780,
+    "confidence": 0.986
+  },
+  {
+    "text": " video",
+    "startMs": 840,
+    "endMs": 1140,
+    "timestampMs": 990,
+    "confidence": 0.89
+  },
+  {
+    "text": " editor,",
+    "startMs": 1140,
+    "endMs": 1520,
+    "timestampMs": 1330,
+    "confidence": 0.992
+  },
+  {
+    "text": " this",
+    "startMs": 1980,
+    "endMs": 2120,
+    "timestampMs": 2050,
+    "confidence": 0.911
+  },
+  {
+    "text": " clip",
+    "startMs": 2120,
+    "endMs": 2360,
+    "timestampMs": 2240,
+    "confidence": 0.997
+  },
+  {
+    "text": " was",
+    "startMs": 2360,
+    "endMs": 2620,
+    "timestampMs": 2490,
+    "confidence": 0.998
+  },
+  {
+    "text": " made",
+    "startMs": 2620,
+    "endMs": 2860,
+    "timestampMs": 2740,
+    "confidence": 0.999
+  },
+  {
+    "text": " to",
+    "startMs": 2860,
+    "endMs": 3040,
+    "timestampMs": 2950,
+    "confidence": 0.998
+  },
+  {
+    "text": " test",
+    "startMs": 3040,
+    "endMs": 3320,
+    "timestampMs": 3180,
+    "confidence": 0.999
+  },
+  {
+    "text": " the",
+    "startMs": 3320,
+    "endMs": 3480,
+    "timestampMs": 3400,
+    "confidence": 0.998
+  },
+  {
+    "text": " whole",
+    "startMs": 3480,
+    "endMs": 3680,
+    "timestampMs": 3580,
+    "confidence": 0.995
+  },
+  {
+    "text": " pipeline,",
+    "startMs": 3680,
+    "endMs": 4160,
+    "timestampMs": 3920,
+    "confidence": 0.91
+  },
+  {
+    "text": " first",
+    "startMs": 4720,
+    "endMs": 5020,
+    "timestampMs": 4870,
+    "confidence": 0.852
+  },
+  {
+    "text": " we",
+    "startMs": 5020,
+    "endMs": 5240,
+    "timestampMs": 5130,
+    "confidence": 0.991
+  },
+  {
+    "text": " transcribe",
+    "startMs": 5240,
+    "endMs": 5920,
+    "timestampMs": 5580,
+    "confidence": 0.971
+  },
+  {
+    "text": " the",
+    "startMs": 5920,
+    "endMs": 6120,
+    "timestampMs": 6020,
+    "confidence": 0.991
+  },
+  {
+    "text": " speech",
+    "startMs": 6120,
+    "endMs": 6420,
+    "timestampMs": 6270,
+    "confidence": 0.996
+  },
+  {
+    "text": " with",
+    "startMs": 6420,
+    "endMs": 6700,
+    "timestampMs": 6560,
+    "confidence": 0.997
+  },
+  {
+    "text": " whisper,",
+    "startMs": 6700,
+    "endMs": 7040,
+    "timestampMs": 6870,
+    "confidence": 0.855
+  },
+  {
+    "text": " then",
+    "startMs": 7460,
+    "endMs": 7660,
+    "timestampMs": 7560,
+    "confidence": 0.984
+  },
+  {
+    "text": " we",
+    "startMs": 7660,
+    "endMs": 7780,
+    "timestampMs": 7720,
+    "confidence": 0.997
+  },
+  {
+    "text": " add",
+    "startMs": 7780,
+    "endMs": 7960,
+    "timestampMs": 7870,
+    "confidence": 0.981
+  },
+  {
+    "text": " animated",
+    "startMs": 7960,
+    "endMs": 8380,
+    "timestampMs": 8170,
+    "confidence": 0.976
+  },
+  {
+    "text": " captions",
+    "startMs": 8380,
+    "endMs": 8940,
+    "timestampMs": 8660,
+    "confidence": 0.996
+  },
+  {
+    "text": " with",
+    "startMs": 8940,
+    "endMs": 9220,
+    "timestampMs": 9080,
+    "confidence": 0.998
+  },
+  {
+    "text": " remotion,",
+    "startMs": 9220,
+    "endMs": 9680,
+    "timestampMs": 9450,
+    "confidence": 0.571
+  },
+  {
+    "text": " finally",
+    "startMs": 10100,
+    "endMs": 10420,
+    "timestampMs": 10260,
+    "confidence": 0.986
+  },
+  {
+    "text": " we",
+    "startMs": 10420,
+    "endMs": 10620,
+    "timestampMs": 10520,
+    "confidence": 0.997
+  },
+  {
+    "text": " render",
+    "startMs": 10620,
+    "endMs": 10940,
+    "timestampMs": 10780,
+    "confidence": 0.997
+  },
+  {
+    "text": " the",
+    "startMs": 10940,
+    "endMs": 11120,
+    "timestampMs": 11030,
+    "confidence": 0.997
+  },
+  {
+    "text": " result",
+    "startMs": 11120,
+    "endMs": 11540,
+    "timestampMs": 11330,
+    "confidence": 0.994
+  },
+  {
+    "text": " to",
+    "startMs": 11540,
+    "endMs": 11780,
+    "timestampMs": 11660,
+    "confidence": 0.993
+  },
+  {
+    "text": " a",
+    "startMs": 11780,
+    "endMs": 11900,
+    "timestampMs": 11840,
+    "confidence": 0.579
+  },
+  {
+    "text": " video",
+    "startMs": 11900,
+    "endMs": 12020,
+    "timestampMs": 11960,
+    "confidence": 0.994
+  },
+  {
+    "text": " file.",
+    "startMs": 12020,
+    "endMs": 12520,
+    "timestampMs": 12270,
+    "confidence": 0.998
+  }
+]

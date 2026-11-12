@@ -1,0 +1,5 @@
+# Python tools of the video editor (installed into .venv by scripts/setup.sh)
+yt-dlp[default]>=2026.10.26
+faster-whisper>=1.2.1
+# faster-whisper 1.2.1 passes an argument that PyAV 17+ removed.
+av<17
