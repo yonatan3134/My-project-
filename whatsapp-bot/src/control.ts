@@ -6,13 +6,6 @@ import { postingChannels, type Scheduler } from "./scheduler.js";
 import { DAY, HOUR, dayKey, hourOfDay } from "./time.js";
 import { canPost } from "./wa/channels.js";
 
-/** USD per million tokens (input, output), used only for the cost estimate in reports. */
-const PRICES: Record<string, [number, number]> = {
-  "claude-haiku-5-5": [0.1, 0.5],
-  "claude-sonnet-5-5": [2, 10],
-  "claude-opus-5-5": [4, 20],
-};
-
 export interface ControlDeps {
   store: Store;
   config: AppConfig;
@@ -69,12 +62,11 @@ export class Control {
 
   // ---- status & reports -----------------------------------------------------
 
+  /** Token counts only: prices differ by model and change, so the bill itself is read at the AI provider. */
   private costToday(day: string): string {
     const u = this.d.store.usage(day);
-    const price = PRICES[this.d.config.settings.model];
-    if (!price) return `${u.calls} קריאות AI`;
-    const usd = (u.input_tokens * price[0] + u.output_tokens * price[1]) / 1_000_000;
-    return `${u.calls} קריאות AI, בערך $${usd.toFixed(2)}`;
+    const k = (n: number) => `${Math.round(n / 1000)}K`;
+    return `${u.calls} קריאות AI (${k(u.input_tokens)} טוקנים קלט, ${k(u.output_tokens)} פלט)`;
   }
 
   statusText(): string {

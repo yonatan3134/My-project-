@@ -11,7 +11,7 @@ export function makeConfig(channels: Record<string, unknown>[], settings: Record
   const parsed = parseConfig({ rollout: [], warmup: [], ...settings }, withInvites);
   return {
     ...parsed,
-    env: { botPhone: null, ownerPhone: "972500000000", ntfyTopic: null, pexelsKey: null, dryRun: true, fakeLlm: true, hasAnthropicKey: false },
+    env: { botPhone: null, ownerPhone: "972500000000", ntfyTopic: null, pexelsKey: null, dryRun: true, fakeLlm: true, hasAnthropicKey: false, hasGeminiKey: false },
   };
 }
 

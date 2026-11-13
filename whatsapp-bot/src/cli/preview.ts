@@ -2,9 +2,9 @@
  * Writes a batch of posts for one channel and prints them, without sending
  * anything: npm run preview -- <channel-id>
  */
-import { loadConfig } from "../config.js";
+import { aiKey, loadConfig } from "../config.js";
 import { refillChannel } from "../content/generator.js";
-import { ClaudeLLM, FakeLLM } from "../content/llm.js";
+import { createLLM, FakeLLM } from "../content/llm.js";
 import { Store } from "../db.js";
 import { DB_PATH } from "../paths.js";
 
@@ -16,8 +16,8 @@ if (!channel || !["creative", "fandom", "news"].includes(channel.mode)) {
   console.error(`שימוש: npm run preview -- <מזהה ערוץ>\nהמזהים: ${ids.join(", ")}`);
   process.exit(1);
 }
-if (!config.env.fakeLlm && !config.env.hasAnthropicKey) {
-  console.error("חסר ANTHROPIC_API_KEY בקובץ .env");
+if (!config.env.fakeLlm && !aiKey(config).present) {
+  console.error(`חסר ${aiKey(config).name} בקובץ .env`);
   process.exit(1);
 }
 
@@ -34,7 +34,7 @@ try {
 let tokens = { input: 0, output: 0 };
 const llm = config.env.fakeLlm
   ? new FakeLLM()
-  : new ClaudeLLM(config.settings, (u) => {
+  : createLLM(config.settings, (u) => {
       tokens = { input: tokens.input + u.inputTokens, output: tokens.output + u.outputTokens };
     });
 

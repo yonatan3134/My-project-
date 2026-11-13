@@ -1,7 +1,7 @@
 {
   "timezone": "Asia/Jerusalem",
-  "model": "claude-haiku-5-5",
-  "effort": "medium",
+  "provider": "gemini",
+  "model": "gemini-flash-lite-latest",
   "cycle": {
     "postsPerBurst": 3,
     "intervalMinutes": 60,

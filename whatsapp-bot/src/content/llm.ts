@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
+import { ApiError, GoogleGenAI } from "@google/genai";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { ChannelConfig, Settings } from "../config.js";
@@ -111,6 +112,78 @@ export class ClaudeLLM implements LLM {
     const out = await this.call(REVIEWER_SYSTEM, reviewerPrompt(channel, items, sources), ReviewSchema);
     return out.verdicts;
   }
+}
+
+function geminiError(err: unknown): LLMError {
+  if (err instanceof LLMError) return err;
+  if (err instanceof ApiError) {
+    const msg = err.message.slice(0, 300);
+    if (err.status === 401 || err.status === 403) return new LLMError(`API key rejected: ${msg}`, "auth", 60 * MINUTE);
+    if (err.status === 429) return new LLMError(`rate limited: ${msg}`, "rate_limit", 10 * MINUTE);
+    if (err.status === 400 || err.status === 404) return new LLMError(`request rejected: ${msg}`, "bad_request", 60 * MINUTE);
+    return new LLMError(`API error ${err.status}: ${msg}`, "server", 5 * MINUTE);
+  }
+  const message = (err as Error)?.message ?? String(err);
+  if (/fetch failed|network|ECONN|ETIMEDOUT|timeout/i.test(message)) return new LLMError(`network error: ${message}`, "network", 3 * MINUTE);
+  return new LLMError(`answer could not be read: ${message}`, "invalid", 5 * MINUTE);
+}
+
+/** Google Gemini, through the Gemini Developer API (key from Google AI Studio, GEMINI_API_KEY in .env). */
+export class GeminiLLM implements LLM {
+  private client: GoogleGenAI;
+
+  constructor(
+    private settings: Pick<Settings, "model">,
+    private onUsage: (u: Usage) => void = () => {},
+    client?: GoogleGenAI,
+  ) {
+    this.client = client ?? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "" });
+  }
+
+  private async call<T>(system: string, user: string, schema: z.ZodType<T>): Promise<T> {
+    let response;
+    try {
+      response = await this.client.models.generateContent({
+        model: this.settings.model,
+        contents: user,
+        config: {
+          systemInstruction: system,
+          responseMimeType: "application/json",
+          responseJsonSchema: z.toJSONSchema(schema),
+          maxOutputTokens: 16000,
+        },
+      });
+    } catch (err) {
+      throw geminiError(err);
+    }
+    const u = response.usageMetadata;
+    this.onUsage({ inputTokens: u?.promptTokenCount ?? 0, outputTokens: (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0) });
+    const blocked = response.promptFeedback?.blockReason;
+    if (blocked) throw new LLMError(`the request was blocked (${blocked})`, "refusal", 30 * MINUTE);
+    const finish = response.candidates?.[0]?.finishReason;
+    if (finish === "MAX_TOKENS") throw new LLMError("response was cut off at the output limit", "truncated", 5 * MINUTE);
+    if (finish && finish !== "STOP") throw new LLMError(`the model stopped without an answer (${finish})`, "refusal", 30 * MINUTE);
+    const text = response.text;
+    if (!text) throw new LLMError("empty response", "invalid", 5 * MINUTE);
+    try {
+      return schema.parse(JSON.parse(text));
+    } catch (err) {
+      throw new LLMError(`response did not match the expected JSON shape: ${(err as Error).message.slice(0, 200)}`, "invalid", 5 * MINUTE);
+    }
+  }
+
+  async write(req: WriterRequest): Promise<Draft[]> {
+    return (await this.call(WRITER_SYSTEM, writerPrompt(req), BatchSchema)).posts;
+  }
+
+  async review(channel: ChannelConfig, items: ReviewItem[], sources: SourceItem[]): Promise<Verdict[]> {
+    return (await this.call(REVIEWER_SYSTEM, reviewerPrompt(channel, items, sources), ReviewSchema)).verdicts;
+  }
+}
+
+/** The model the bot is configured to use. */
+export function createLLM(settings: Pick<Settings, "provider" | "model" | "effort">, onUsage: (u: Usage) => void = () => {}): LLM {
+  return settings.provider === "claude" ? new ClaudeLLM(settings, onUsage) : new GeminiLLM(settings, onUsage);
 }
 
 /**

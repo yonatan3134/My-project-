@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { WAMessage } from "baileys";
-import { loadConfig } from "./config.js";
+import { aiKey, loadConfig } from "./config.js";
 import { refillChannel, type GenContext } from "./content/generator.js";
-import { ClaudeLLM, FakeLLM, type LLM } from "./content/llm.js";
+import { createLLM, FakeLLM, type LLM } from "./content/llm.js";
 import { Control } from "./control.js";
 import { Store } from "./db.js";
 import { logger } from "./logger.js";
@@ -31,13 +31,13 @@ async function main(): Promise<void> {
     store.event(now(), "warn", "interrupted", `${interrupted} post(s) were mid-send when the bot stopped; they will not be sent again`);
   }
 
-  if (!env.fakeLlm && !env.hasAnthropicKey) {
-    logger.error("ANTHROPIC_API_KEY is missing. Put it in the .env file (see .env.example).");
+  if (!env.fakeLlm && !aiKey(config).present) {
+    logger.error(`${aiKey(config).name} is missing. Put it in the .env file (see .env.example).`);
     process.exit(1);
   }
   const llm: LLM = env.fakeLlm
     ? new FakeLLM()
-    : new ClaudeLLM(settings, (u) => store.addUsage(dayKey(now(), settings.timezone), u.inputTokens, u.outputTokens));
+    : createLLM(settings, (u) => store.addUsage(dayKey(now(), settings.timezone), u.inputTokens, u.outputTokens));
 
   const videoAvailable = await ffmpegAvailable();
   if (!videoAvailable) logger.warn("ffmpeg was not found: video posts will be sent as pictures");

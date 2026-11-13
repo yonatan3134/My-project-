@@ -58,7 +58,10 @@ export type ChannelConfig = z.infer<typeof ChannelSchema>;
 
 const SettingsSchema = z.object({
   timezone: z.string().default("Asia/Jerusalem"),
-  model: z.string().default("claude-haiku-5-5"),
+  /** which AI service writes the posts */
+  provider: z.enum(["gemini", "claude"]).default("gemini"),
+  /** model id at that service. "gemini-flash-lite-latest" always points at Google's current low-cost model. */
+  model: z.string().default("gemini-flash-lite-latest"),
   effort: z.enum(["low", "medium", "high"]).default("medium"),
   /** "3 posts one hour apart, then a 2 hour pause" */
   cycle: z
@@ -134,6 +137,7 @@ export interface Env {
   dryRun: boolean;
   fakeLlm: boolean;
   hasAnthropicKey: boolean;
+  hasGeminiKey: boolean;
 }
 
 export interface AppConfig {
@@ -156,6 +160,7 @@ export function loadEnv(): Env {
     dryRun: process.env.DRY_RUN === "1",
     fakeLlm: process.env.FAKE_LLM === "1",
     hasAnthropicKey: Boolean(process.env.ANTHROPIC_API_KEY?.trim() || process.env.ANTHROPIC_AUTH_TOKEN?.trim()),
+    hasGeminiKey: Boolean(process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim()),
   };
 }
 
@@ -189,6 +194,13 @@ export function parseConfig(settingsRaw: unknown, channelsRaw: unknown): { setti
     throw new Error("settings.send.maxGapSeconds must be >= minGapSeconds");
   }
   return { settings, channels };
+}
+
+/** Name of the .env variable that holds the key for the configured AI service, and whether it is set. */
+export function aiKey(config: Pick<AppConfig, "settings" | "env">): { name: string; present: boolean } {
+  return config.settings.provider === "claude"
+    ? { name: "ANTHROPIC_API_KEY", present: config.env.hasAnthropicKey }
+    : { name: "GEMINI_API_KEY", present: config.env.hasGeminiKey };
 }
 
 export function loadConfig(dir: string = CONFIG_DIR): AppConfig {

@@ -17,7 +17,8 @@ test("the shipped configuration is valid and lists all 37 channels once", () => 
     assert.ok((c.news?.queries.length ?? 0) > 0);
   }
   for (const c of config.channels.filter((c) => c.mode === "fandom")) assert.ok((c.news?.queries.length ?? 0) > 0, `${c.id} has no source`);
-  assert.equal(config.settings.model, "claude-haiku-5-5");
+  assert.equal(config.settings.provider, "gemini");
+  assert.equal(config.settings.model, "gemini-flash-lite-latest");
 });
 
 test("links and bare codes are both accepted", () => {

@@ -5,7 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { loadConfig, type AppConfig } from "../config.js";
+import { ApiError, GoogleGenAI } from "@google/genai";
+import { aiKey, loadConfig, type AppConfig } from "../config.js";
 import { collectItems, fetchSefariaChapter } from "../content/sources.js";
 import { renderCard } from "../media/cards.js";
 import { ffmpegAvailable, videoFromCard } from "../media/video.js";
@@ -41,8 +42,20 @@ if (config) {
   if (env.ntfyTopic) ok("NTFY_TOPIC מוגדר: התראות יגיעו לטלפון");
   else warn("NTFY_TOPIC לא מוגדר: אם הבוט יתנתק מוואטסאפ לא תקבל על זה התראה");
 
-  if (!env.hasAnthropicKey) {
-    bad("ANTHROPIC_API_KEY חסר בקובץ .env");
+  const key = aiKey(config);
+  if (!key.present) {
+    bad(`${key.name} חסר בקובץ .env`);
+  } else if (settings.provider === "gemini") {
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "" });
+      const model = await ai.models.get({ model: settings.model });
+      ok(`Gemini עונה, המודל ${model.name ?? settings.model} זמין`);
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 0;
+      if (status === 401 || status === 403 || (status === 400 && /API key/i.test((err as Error).message))) bad("מפתח Gemini לא תקין (GEMINI_API_KEY)");
+      else if (status === 404) bad(`המודל ${settings.model} לא קיים. בדוק את "model" ב-config/settings.json`);
+      else bad(`Gemini: ${(err as Error).message.slice(0, 200)}`);
+    }
   } else {
     try {
       const model = await new Anthropic().models.retrieve(settings.model);
