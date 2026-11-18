@@ -89,7 +89,9 @@ export function startPanel(api: PanelApi, port: number): http.Server {
       const ip = req.socket.remoteAddress ?? "?";
       const f = fails.get(ip);
       if (f && f.until > Date.now()) return send(res, 429, "יותר מדי ניסיונות. נסה שוב בעוד רבע שעה.", "text/plain; charset=utf-8");
-      if (!authorized(req)) {
+      // on the bot's own computer the page opens without a password; from anywhere else it is required
+      const local = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+      if (!local && !authorized(req)) {
         if (req.headers.authorization) {
           const n = (f?.n ?? 0) + 1;
           fails.set(ip, { n, until: n >= 10 ? Date.now() + 15 * 60_000 : 0 });
