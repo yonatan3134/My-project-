@@ -89,6 +89,11 @@ export function minSpacingMs(cap: number | null): number {
 /** In growth mode the bot stays quiet at night: posts sent while followers sleep get buried and annoy. */
 export const GROWTH_QUIET = { from: 0, to: 7 };
 
+/** The general settings with this channel's own rhythm, when it has one. */
+export function channelSettings(channel: ChannelConfig, s: Settings): Settings {
+  return channel.cycle ? { ...s, cycle: channel.cycle } : s;
+}
+
 export function inQuietHours(s: Settings, now: number, growth = false): boolean {
   const q = s.quietHours ?? (growth ? GROWTH_QUIET : null);
   if (!q || q.from === q.to) return false;
@@ -223,7 +228,7 @@ export class Scheduler {
     // 2. the channel whose slot has been waiting longest
     const due: { channel: ChannelConfig; slot: number }[] = [];
     for (const channel of active) {
-      const slot = currentSlot(now, channel.id, this.s);
+      const slot = currentSlot(now, channel.id, channelSettings(channel, this.s));
       if (slot === null) continue;
       const state = store.channel(channel.id);
       if (slot <= state.last_slot_ts) continue;
@@ -255,7 +260,7 @@ export class Scheduler {
         if (store.sentOnDay(channel.id, dayKey(now, this.s.timezone)) >= cap) continue;
         if (now - state.last_post_ts < minSpacingMs(cap)) continue;
       }
-      const row = store.nextReady(channel.id, now);
+      const row = this.specialDue(channel, now) ?? store.nextReady(channel.id, now);
       if (!row) {
         if (channel.mode === "creative") store.event(now, "warn", "queue_empty", "no post was ready for this slot", channel.id);
         continue;
@@ -315,7 +320,11 @@ export class Scheduler {
 
     if (res.ok) {
       store.markSent(row.id, res.id ?? null, now, dayKey(now, this.s.timezone));
-      if (!row.is_followup) store.updateChannel(channel.id, { last_post_ts: now });
+      if (!row.is_followup) {
+        store.updateChannel(channel.id, { last_post_ts: now });
+        const key = `special_count:${channel.id}`;
+        store.set(key, row.special ? "0" : String((store.getNumber(key) ?? 0) + 1));
+      }
       if (res.sentAs === "poll") this.noteCapability("poll", true, now);
       if (res.sentAs === "image" || res.sentAs === "video") this.noteCapability("media", true, now);
       if (row.payload.followup && !row.is_followup) {
@@ -366,6 +375,47 @@ export class Scheduler {
     const text = `${lines[hash32(day + target.id) % lines.length]}\nhttps://whatsapp.com/channel/${target.invite}`;
     const delay = (15 + this.rand() * 15) * MINUTE;
     store.enqueue({ channelId: channel.id, payload: { kind: "text", text }, notBefore: now + delay, isFollowup: true, now });
+  }
+
+  /**
+   * The owner's special post, when its turn has come: after every N-1
+   * regular posts. A fixed text is queued on the spot; an AI-written one is
+   * taken from the queue (if it is not written yet, a regular post goes out
+   * and the special one follows next time).
+   */
+  private specialDue(channel: ChannelConfig, now: number): QueueRow | null {
+    const sp = channel.special;
+    if (!sp) return null;
+    const { store } = this.d;
+    if ((store.getNumber(`special_count:${channel.id}`) ?? 0) < sp.every - 1) return null;
+    if (sp.text.trim()) {
+      const id = store.enqueue({ channelId: channel.id, payload: { kind: "text", text: sp.text.trim() }, special: true, now });
+      return store.queueRow(id);
+    }
+    return store.nextReady(channel.id, now, true);
+  }
+
+  /**
+   * "Push" a channel: a recommendation with its link goes out in every other
+   * channel the bot posts in, one after another. At most once in 12 hours per channel.
+   */
+  pushChannel(target: ChannelConfig, now: number, message?: string): number | string {
+    const { store } = this.d;
+    const last = store.getNumber(`push_last:${target.id}`) ?? 0;
+    if (now - last < 12 * HOUR) return "הערוץ הזה כבר נדחף ב-12 השעות האחרונות";
+    const text = message?.trim()
+      ? `${message.trim()}\n\n👇 https://whatsapp.com/channel/${target.invite}`
+      : `📣 *ערוץ מומלץ!*\n\n✨ *${target.name}* ✨\n\nהצטרפו עכשיו, מחכה לכם שם תוכן שווה 👇\nhttps://whatsapp.com/channel/${target.invite}`;
+    let n = 0;
+    for (const c of this.d.config.channels) {
+      if (c.id === target.id || !c.enabled || c.mode === "off") continue;
+      const st = store.channel(c.id);
+      if (!st.jid || !canPost(st.role) || st.paused) continue;
+      store.enqueue({ channelId: c.id, payload: { kind: "text", text }, notBefore: now, isFollowup: true, now });
+      n++;
+    }
+    if (n > 0) store.set(`push_last:${target.id}`, String(now));
+    return n;
   }
 
   /** Queues a call in the invasion channel pointing at `target`. Returns false when there is no usable invasion channel. */

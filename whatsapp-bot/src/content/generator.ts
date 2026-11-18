@@ -163,6 +163,14 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
   const state = store.channel(channel.id);
   if (state.retry_at > now) return result;
 
+  // the owner's "every N posts" special post, written ahead so it is ready when its turn comes
+  if (channel.special?.prompt.trim() && !channel.special.text.trim() && store.readySpecialCount(channel.id) === 0) {
+    const r = await refillSpecial(ctx, channel, mode, now);
+    result.queued += r.queued;
+    result.rejected.push(...r.rejected);
+    if (r.llmError) return { ...result, llmError: r.llmError };
+  }
+
   result.queued += await refillSefaria(ctx, channel, now);
 
   await refreshSources(ctx, channel, now);
@@ -298,6 +306,59 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
     // the whole batch was unusable; wait before paying for another one
     store.updateChannel(channel.id, { retry_at: now + 30 * MINUTE });
     store.event(now, "warn", "empty_batch", `no usable posts out of ${drafts.length}: ${summarize(result.rejected)}`, channel.id);
+  }
+  return result;
+}
+
+async function refillSpecial(ctx: GenContext, channel: ChannelConfig, mode: "creative" | "fandom" | "news", now: number): Promise<RefillResult> {
+  const result: RefillResult = { queued: 0, rejected: [] };
+  const { store, settings } = ctx;
+  const prompt = channel.special?.prompt.trim() ?? "";
+  // a special post is written freely from the owner's instruction, never as a news report
+  const writeMode = mode === "news" ? "creative" : mode;
+  let drafts: Draft[];
+  try {
+    drafts = await ctx.llm.write({
+      channel,
+      mode: writeMode,
+      counts: { text: 1 },
+      usedKeys: store.recentForDedup(channel.id, null, settings.dedup.keysInPrompt).map((r) => r.topic_key).filter(Boolean),
+      samples: store.styleSamples(channel.id, 8),
+      sources: [],
+      special: prompt,
+    });
+  } catch (err) {
+    return failed(ctx, channel, now, result, err);
+  }
+  const index = new DedupIndex(store.recentForDedup(channel.id, null, settings.dedup.lookback), settings.dedup);
+  const kept: { payload: PostPayload; cand: Candidate }[] = [];
+  for (const d of drafts.slice(0, 1)) {
+    const r = draftToPayload({ ...d, source_index: -1 }, writeMode, 0);
+    if ("reject" in r) {
+      result.rejected.push(r.reject);
+      continue;
+    }
+    const cand = candidateOf(r.payload, d.topic_key);
+    const why = index.check(cand);
+    if (why) result.rejected.push(`repeat: ${why}`);
+    else kept.push({ payload: r.payload, cand });
+  }
+  if (kept.length === 0) return result;
+  try {
+    const k = kept[0]!;
+    const [v] = await ctx.llm.review(
+      channel,
+      [{ index: 0, kind: k.payload.kind, text: k.payload.text, pollQuestion: k.payload.pollQuestion ?? "", pollOptions: k.payload.pollOptions ?? [], cardText: k.payload.cardText ?? "", followup: k.payload.followup ?? "", sourceIndex: -1 }],
+      [],
+    );
+    if (v?.ok !== true) {
+      result.rejected.push(`review: ${v?.reason || "no verdict"}`);
+      return result;
+    }
+    store.enqueue({ channelId: channel.id, group: channel.group, payload: k.payload, topicKey: k.cand.topicKey, normText: k.cand.normText, normHash: k.cand.normHash, special: true, now });
+    result.queued++;
+  } catch (err) {
+    return failed(ctx, channel, now, result, err);
   }
   return result;
 }

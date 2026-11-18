@@ -52,6 +52,23 @@ const ChannelSchema = z.object({
     })
     .optional(),
   enabled: z.boolean().default(true),
+  /** this channel's own rhythm instead of the general one */
+  cycle: z
+    .object({
+      postsPerBurst: z.number().int().min(1).max(24),
+      intervalMinutes: z.number().min(5).max(24 * 60),
+      pauseMinutes: z.number().min(0).max(24 * 60),
+    })
+    .optional(),
+  /** every N posts, a special post: a fixed text, or one the AI writes from an instruction */
+  special: z
+    .object({
+      every: z.number().int().min(2).max(100),
+      text: z.string().max(1500).default(""),
+      prompt: z.string().max(600).default(""),
+    })
+    .refine((v) => v.text.trim() || v.prompt.trim(), "a special post needs a text or an instruction")
+    .optional(),
   /** "card": text on a picture (default). "photo": the AI picture alone, the text goes in the caption. */
   style: z.enum(["card", "photo"]).default("card"),
   note: z.string().optional(),

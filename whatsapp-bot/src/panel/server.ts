@@ -30,6 +30,8 @@ export interface PanelApi {
   setPaused(paused: boolean): void;
   setGrowth(on: boolean): void;
   queue(channelId: string): unknown;
+  pauseChannel(id: string, paused: boolean): string | null;
+  push(id: string, message: string): string | null;
   discard(id: number): string | null;
 }
 
@@ -131,6 +133,12 @@ export function startPanel(api: PanelApi, port: number): http.Server {
           case "/api/pause":
             api.setPaused(body.paused === true);
             break;
+          case "/api/channel-pause":
+            error = api.pauseChannel(String(body.id ?? ""), body.paused === true);
+            break;
+          case "/api/push":
+            error = api.push(String(body.id ?? ""), String(body.message ?? "").slice(0, 600));
+            break;
           case "/api/discard":
             error = api.discard(Number(body.id));
             break;
@@ -149,6 +157,8 @@ export function startPanel(api: PanelApi, port: number): http.Server {
     });
   });
   server.on("error", (err: Error) => logger.error({ err: err.message, port }, "the settings website could not start"));
-  server.listen(port, () => logger.info({ port }, "settings website is up"));
+  // PANEL_HOST=127.0.0.1 keeps the page on this computer only (used on Windows, so no firewall prompt appears)
+  const host = process.env.PANEL_HOST || undefined;
+  server.listen(port, host, () => logger.info({ port, host: host ?? "all" }, "settings website is up"));
   return server;
 }

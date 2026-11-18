@@ -33,6 +33,7 @@ export const PAGE = `<!doctype html>
   .ch .top { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .ch .top input[type=text] { flex:1; }
   .ch details { margin-top:6px; } .ch summary { cursor:pointer; color:var(--muted); font-size:14px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; } @media (max-width:600px) { .grid3 { grid-template-columns:1fr 1fr; } }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; } @media (max-width:600px) { .grid2 { grid-template-columns:1fr; } }
   #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#1f1b2e; color:#fff; padding:12px 18px; border-radius:12px; display:none; z-index:9; }
   ul.events { margin:0; padding:0 18px 0 0; color:var(--muted); font-size:14px; }
@@ -109,6 +110,11 @@ export const PAGE = `<!doctype html>
   <section class="card">
     <h2>📢 ערוצים</h2>
     <p class="hint">הבוט חייב להיות מנהל בכל ערוץ. הסדר כאן הוא הסדר שבו ערוצים נכנסים לפעולה בהתחלה ההדרגתית.</p>
+    <details style="margin-bottom:12px"><summary>📋 הדבקת רשימה מעודכנת מוואטסאפ</summary>
+      <p class="hint">מדביקים כאן את ההודעה עם הקישורים ("כדי לעקוב אחרי הערוץ ... ב-WhatsApp: https://..."). ערוצים קיימים שומרים את ההגדרות שלהם.</p>
+      <textarea id="importText" style="min-height:90px" class="ltr"></textarea>
+      <div class="row" style="margin-top:8px"><button class="light" id="importBtn">לעדכן את הרשימה</button></div>
+    </details>
     <div id="channels"></div>
     <div class="row"><button class="light" id="addCh">➕ ערוץ חדש</button><button id="saveCh">שמירת הערוצים</button></div>
   </section>
@@ -181,6 +187,7 @@ function render() {
 }
 
 function renderChannels(list) {
+  const dc = S.defaultCycle;
   $("channels").innerHTML = list.map((c, i) => {
     let status = "";
     if (c.mode !== "off" && c.enabled) {
@@ -189,39 +196,98 @@ function renderChannels(list) {
       else if (S.connection === "open") status = '<span class="pill warn">לא נבדק</span>';
     }
     const opts = Object.entries(MODES).map(([k, v]) => '<option value="' + k + '"' + (k === c.mode ? " selected" : "") + ">" + v + "</option>").join("");
+    const cy = c.cycle || {}, sp = c.special || {};
+    const live = c.id && c.enabled && c.mode !== "off";
     return '<div class="ch" data-i="' + i + '" data-id="' + esc(c.id || "") + '">' +
-      '<div class="top"><input type="checkbox" class="en"' + (c.enabled ? " checked" : "") + ' title="פעיל" style="width:auto">' +
+      '<div class="top">' +
+      (live ? '<button class="light run" style="padding:6px 10px" title="פועל / עצור">' + (c.paused ? "⏸ עצור" : "▶️ פועל") + "</button>" : "") +
       '<input type="text" class="name" value="' + esc(c.name) + '" placeholder="שם הערוץ">' + status +
       (c.followers != null ? '<span class="hint" title="עוקבים">👥 ' + c.followers.toLocaleString("he-IL") + "</span>" +
         (c.followersWeek ? '<span class="grow ' + (c.followersWeek > 0 ? "up" : "down") + '">' + (c.followersWeek > 0 ? "+" : "") + c.followersWeek + " בשבוע</span>" : "") : "") +
       (c.sentToday ? '<span class="hint">' + c.sentToday + " היום</span>" : "") +
-      '<button class="danger del" title="מחיקה">✕</button></div>' +
-      '<details' + (c.id ? "" : " open") + '><summary>פרטים</summary>' +
-      '<label>קישור לערוץ</label><input class="invite ltr" value="' + esc(c.invite ? "https://whatsapp.com/channel/" + c.invite : "") + '" placeholder="https://whatsapp.com/channel/...">' +
+      '<button class="danger del" title="מחיקה מהבוט">✕</button></div>' +
+      '<details' + (c.id ? "" : " open") + '><summary>⚙️ ניהול הערוץ</summary>' +
+      '<label><input type="checkbox" class="en" style="width:auto"' + (c.enabled ? " checked" : "") + '> הבוט מנהל את הערוץ הזה</label>' +
+      '<label>קישור לערוץ</label><input class="invite ltr" value="' + esc(!c.invite ? "" : c.invite.startsWith("http") ? c.invite : "https://whatsapp.com/channel/" + c.invite) + '" placeholder="https://whatsapp.com/channel/...">' +
       '<label>סוג</label><select class="mode">' + opts + "</select>" +
       '<label>על מה הערוץ (ה-AI כותב לפי זה)</label><textarea class="topic">' + esc(c.topic) + "</textarea>" +
-      '<label>מילות חיפוש לחדשות, מופרדות בפסיק</label><input class="queries" value="' + esc((c.queries || []).join(", ")) + '">' +
+      '<label>מילות חיפוש לחדשות אמיתיות, מופרדות בפסיק</label><input class="queries" value="' + esc((c.queries || []).join(", ")) + '">' +
+      '<h3 style="font-size:15px;margin:14px 0 0">⏰ כל כמה זמן</h3>' +
+      '<p class="hint" style="margin:4px 0">ריק = ההגדרה הכללית (' + dc.postsPerBurst + " פוסטים, כל " + dc.intervalMinutes + " דק׳, ואז הפסקה של " + dc.pauseMinutes + " דק׳)</p>" +
+      '<div class="grid3"><div><label>פוסטים ברצף</label><input class="cyB" type="number" min="1" value="' + esc(cy.postsPerBurst ?? "") + '"></div>' +
+      '<div><label>דקות בין פוסטים</label><input class="cyI" type="number" min="5" value="' + esc(cy.intervalMinutes ?? "") + '"></div>' +
+      '<div><label>דקות הפסקה</label><input class="cyP" type="number" min="0" value="' + esc(cy.pauseMinutes ?? "") + '"></div></div>' +
+      '<label>מקסימום פוסטים ביום (ריק = בלי הגבלה מיוחדת)</label><input class="max" type="number" min="1" value="' + esc(c.maxPerDay ?? "") + '">' +
+      (c.cap ? '<p class="hint" style="margin:4px 0">כרגע עד ' + c.cap + " ביום (כולל התחלה הדרגתית)</p>" : "") +
+      '<h3 style="font-size:15px;margin:14px 0 0">⭐ הודעה מיוחדת</h3>' +
+      '<div class="grid3"><div><label>כל כמה פוסטים</label><input class="spE" type="number" min="2" placeholder="למשל 3" value="' + esc(sp.every ?? "") + '"></div></div>' +
+      '<label>טקסט קבוע שיישלח כמו שהוא (למשל "תעקבו ותזמינו חברים!")</label><textarea class="spT">' + esc(sp.text ?? "") + "</textarea>" +
+      '<label>או: הוראה ל-AI (למשל "חידה קשה במיוחד" או "סקר על הדמות הכי אהובה")</label><textarea class="spP">' + esc(sp.prompt ?? "") + "</textarea>" +
+      (live ? '<div class="row" style="margin-top:12px"><button class="push">📣 לדחוף את הערוץ בכל הערוצים</button></div>' : "") +
       "</details></div>";
   }).join("");
   document.querySelectorAll(".ch .del").forEach((b) => b.onclick = () => {
     if (!confirm("למחוק את הערוץ מהבוט? (הערוץ עצמו בוואטסאפ לא נמחק)")) return;
     editing = true; b.closest(".ch").remove();
   });
+  document.querySelectorAll(".ch .run").forEach((b) => b.onclick = async () => {
+    const id = b.closest(".ch").dataset.id, c = S.channels.find((x) => x.id === id);
+    try { await post("/api/channel-pause", { id, paused: !c.paused }); c.paused = !c.paused; b.textContent = c.paused ? "⏸ עצור" : "▶️ פועל"; toast(c.paused ? "הערוץ נעצר" : "הערוץ פועל"); } catch (e) { toast(e.message); }
+  });
+  document.querySelectorAll(".ch .push").forEach((b) => b.onclick = async () => {
+    const id = b.closest(".ch").dataset.id, c = S.channels.find((x) => x.id === id);
+    const msg = prompt("📣 הודעה שתישלח בכל הערוצים האחרים עם קישור ל-" + c.name + "\\n(להשאיר ריק להודעה מוכנה)", "");
+    if (msg === null) return;
+    try { await post("/api/push", { id, message: msg }); toast("📣 נשלח לתור. ההודעות ייצאו אחת-אחת ב-20 הדקות הקרובות"); } catch (e) { toast(e.message); }
+  });
   document.querySelectorAll(".ch input, .ch select, .ch textarea").forEach((el) => el.addEventListener("input", () => editing = true));
 }
 
 function collectChannels() {
+  const n = (el, sel) => el.querySelector(sel).value.trim();
   return [...document.querySelectorAll(".ch")].map((el) => ({
     id: el.dataset.id || null,
-    name: el.querySelector(".name").value.trim(),
-    invite: el.querySelector(".invite").value.trim(),
+    name: n(el, ".name"),
+    invite: n(el, ".invite"),
     mode: el.querySelector(".mode").value,
-    topic: el.querySelector(".topic").value.trim(),
-    queries: el.querySelector(".queries").value.split(",").map((q) => q.trim()).filter(Boolean),
+    topic: n(el, ".topic"),
+    queries: n(el, ".queries").split(",").map((q) => q.trim()).filter(Boolean),
     enabled: el.querySelector(".en").checked,
+    maxPerDay: n(el, ".max"),
+    cycle: n(el, ".cyB") && n(el, ".cyI") ? { postsPerBurst: n(el, ".cyB"), intervalMinutes: n(el, ".cyI"), pauseMinutes: n(el, ".cyP") || 0 } : null,
+    special: n(el, ".spE") ? { every: n(el, ".spE"), text: n(el, ".spT"), prompt: n(el, ".spP") } : null,
   }));
 }
 
+/** Reads the "to follow the channel X on WhatsApp: link" lines WhatsApp produces when sharing channels. */
+function importList() {
+  const text = $("importText").value;
+  const re = /(?:הערוץ|channel)\\s+(.+?)\\s+(?:ב-|on )WhatsApp:?\\S*\\s*https:\\/\\/whatsapp\\.com\\/channel\\/([A-Za-z0-9]+)/g;
+  const found = [];
+  for (const m of text.matchAll(re)) found.push({ name: m[1].replace(/[​-‏]/g, "").trim(), invite: m[2] });
+  if (found.length === 0) {
+    for (const m of text.matchAll(/https:\\/\\/whatsapp\\.com\\/channel\\/([A-Za-z0-9]+)/g)) found.push({ name: "", invite: m[1] });
+  }
+  if (found.length === 0) { toast("לא מצאתי קישורים לערוצים בטקסט"); return; }
+  const current = collectChannels();
+  const byInvite = new Map(current.map((c) => [c.invite.replace(/^.*channel\\//, ""), c]));
+  const keep = new Set(found.map((f) => f.invite));
+  const removed = current.filter((c) => c.id && !keep.has(c.invite.replace(/^.*channel\\//, "")));
+  const added = found.filter((f) => !byInvite.has(f.invite));
+  let list = found.map((f) => {
+    const old = byInvite.get(f.invite);
+    if (old) return { ...old, name: f.name || old.name };
+    return { id: null, name: f.name || "ערוץ חדש", invite: "https://whatsapp.com/channel/" + f.invite, mode: "creative", topic: f.name, queries: [], enabled: true };
+  });
+  if (removed.length && !confirm("ברשימה החדשה חסרים " + removed.length + " ערוצים:\\n" + removed.map((r) => "• " + r.name).join("\\n") + "\\n\\nלהסיר אותם מהבוט?")) {
+    list = list.concat(removed);
+  }
+  editing = true;
+  renderChannels(list);
+  toast("נמצאו " + found.length + " ערוצים, " + added.length + " חדשים. בודקים ולוחצים \\"שמירת הערוצים\\"");
+}
+
+$("importBtn").onclick = importList;
 $("addCh").onclick = () => {
   editing = true;
   const list = collectChannels();
