@@ -52,6 +52,8 @@ const ChannelSchema = z.object({
     })
     .optional(),
   enabled: z.boolean().default(true),
+  /** "card": text on a picture (default). "photo": the AI picture alone, the text goes in the caption. */
+  style: z.enum(["card", "photo"]).default("card"),
   note: z.string().optional(),
 });
 export type ChannelConfig = z.infer<typeof ChannelSchema>;
@@ -62,6 +64,19 @@ const SettingsSchema = z.object({
   provider: z.enum(["gemini", "claude"]).default("gemini"),
   /** model id at that service. "gemini-flash-lite-latest" always points at Google's current low-cost model. */
   model: z.string().default("gemini-flash-lite-latest"),
+  /**
+   * Models to try in order, as "provider:model". When one is unavailable (overloaded, out of quota,
+   * retired) the next one writes the post. A model whose service has no key in .env is skipped.
+   */
+  models: z.array(z.string().regex(/^(gemini|claude):[A-Za-z0-9._-]+$/)).default([]),
+  /** AI-made pictures (Gemini image models). Usually paid per picture, so there is a daily limit. */
+  images: z
+    .object({
+      enabled: z.boolean().default(true),
+      maxPerDay: z.number().int().min(0).default(15),
+      models: z.array(z.string()).default(["gemini-2.5-flash-image", "gemini-3.1-flash-image-preview"]),
+    })
+    .default({ enabled: true, maxPerDay: 15, models: ["gemini-2.5-flash-image", "gemini-3.1-flash-image-preview"] }),
   effort: z.enum(["low", "medium", "high"]).default("medium"),
   /** "3 posts one hour apart, then a 2 hour pause" */
   cycle: z
@@ -199,10 +214,28 @@ export function parseConfig(settingsRaw: unknown, channelsRaw: unknown): { setti
 }
 
 /** Name of the .env variable that holds the key for the configured AI service, and whether it is set. */
+export interface ModelRef {
+  provider: "gemini" | "claude";
+  model: string;
+}
+
+/** The models to try, in order: the "models" list, or the single provider/model when the list is empty. */
+export function modelChain(settings: Pick<Settings, "models" | "provider" | "model">): ModelRef[] {
+  const list = settings.models.length > 0 ? settings.models : [`${settings.provider}:${settings.model}`];
+  return list.map((m) => {
+    const i = m.indexOf(":");
+    return { provider: m.slice(0, i) as ModelRef["provider"], model: m.slice(i + 1) };
+  });
+}
+
+/** The models in the chain whose service has a key in .env. */
+export function usableModels(config: Pick<AppConfig, "settings" | "env">): ModelRef[] {
+  return modelChain(config.settings).filter((m) => (m.provider === "claude" ? config.env.hasAnthropicKey : config.env.hasGeminiKey));
+}
+
 export function aiKey(config: Pick<AppConfig, "settings" | "env">): { name: string; present: boolean } {
-  return config.settings.provider === "claude"
-    ? { name: "ANTHROPIC_API_KEY", present: config.env.hasAnthropicKey }
-    : { name: "GEMINI_API_KEY", present: config.env.hasGeminiKey };
+  const names = [...new Set(modelChain(config.settings).map((m) => (m.provider === "claude" ? "ANTHROPIC_API_KEY" : "GEMINI_API_KEY")))];
+  return { name: names.join(" או "), present: usableModels(config).length > 0 };
 }
 
 export function loadConfig(dir: string = CONFIG_DIR): AppConfig {

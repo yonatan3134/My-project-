@@ -2,9 +2,10 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { WAMessage } from "baileys";
-import { aiKey, EDITED_CHANNELS_FILE, inviteCode, loadConfig, parseConfig, type ChannelConfig } from "./config.js";
+import { aiKey, modelChain, EDITED_CHANNELS_FILE, inviteCode, loadConfig, parseConfig, type ChannelConfig } from "./config.js";
 import { refillChannel, type GenContext } from "./content/generator.js";
-import { createLLM, FakeLLM, type LLM } from "./content/llm.js";
+import { createLLM, FakeLLM, FallbackLLM, type LLM } from "./content/llm.js";
+import { AiImages } from "./media/aiimage.js";
 import { Control } from "./control.js";
 import { Store, type PostPayload } from "./db.js";
 import { logger } from "./logger.js";
@@ -67,7 +68,7 @@ async function main(): Promise<void> {
   const llm: LLM | null = env.fakeLlm
     ? new FakeLLM()
     : hasKey
-      ? createLLM(settings, (u) => store.addUsage(dayKey(now(), settings.timezone), u.inputTokens, u.outputTokens))
+      ? createLLM(modelChain(settings), settings.effort, (u) => store.addUsage(dayKey(now(), settings.timezone), u.inputTokens, u.outputTokens))
       : null;
 
   const videoAvailable = await ffmpegAvailable();
@@ -94,11 +95,18 @@ async function main(): Promise<void> {
     sender = new DryRunSender({ saveMedia: false, quiet: true });
   }
 
+  const aiImages = new AiImages(
+    store,
+    { ...settings.images, timezone: settings.timezone },
+    process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim(),
+    (m) => store.event(now(), "warn", "ai_image", m),
+  );
+
   const scheduler = new Scheduler({
     store,
     config,
     sender,
-    media: new DefaultMedia(env.pexelsKey, (m) => store.event(now(), "info", "media_note", m)),
+    media: new DefaultMedia(env.pexelsKey, (m) => store.event(now(), "info", "media_note", m), aiImages),
     now,
     isConnected: () => (client ? client.isOpen : env.dryRun),
   });
@@ -257,6 +265,11 @@ async function main(): Promise<void> {
             ntfyTopic: env.ntfyTopic ?? "",
             paused: scheduler.isPaused(),
             growth: scheduler.growth(),
+            hasClaude: env.hasAnthropicKey,
+            models: llm instanceof FallbackLLM
+              ? llm.status().map((m) => ({ name: m.name, problem: m.until > now() ? m.problem : null, lastUsedAt: m.lastUsedAt }))
+              : modelChain(settings).map((m) => ({ name: `${m.provider}:${m.model}`, problem: "אין מפתח", lastUsedAt: 0 })),
+            images: aiImages.usage(),
             today: { sent: totals.sent, ready: totals.ready },
             usage: store.usage(day),
             activeChannels: active.length,
@@ -286,6 +299,7 @@ async function main(): Promise<void> {
           }
           if (str(b.geminiKey)) values.GEMINI_API_KEY = str(b.geminiKey);
           if (str(b.pexelsKey)) values.PEXELS_API_KEY = str(b.pexelsKey);
+          if (str(b.anthropicKey)) values.ANTHROPIC_API_KEY = str(b.anthropicKey);
           if (values.BOT_PHONE && env.botPhone && values.BOT_PHONE !== env.botPhone && isLinked()) {
             clearSession(); // a different bot number needs a new link
           }

@@ -101,3 +101,30 @@ export async function renderOverlay(opts: { text: string; width: number; height:
   );
   return sharp(box).composite([{ input: text, gravity: "centre" }]).png().toBuffer();
 }
+
+/**
+ * A picture with the text in a dark band along the bottom, so the picture
+ * itself stays visible. Without text the picture is only resized.
+ */
+export async function renderPhotoCard(opts: { photo: Buffer; text?: string; footer?: string; size?: number }): Promise<CardImage> {
+  const size = opts.size ?? CARD_SIZE;
+  const photo = await sharp(opts.photo).resize(size, size, { fit: "cover" }).toBuffer();
+  const text = (opts.text ?? "").trim();
+  if (!text) return finish(sharp(photo), size);
+  const bandH = Math.round(size * 0.3);
+  const band = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+      <defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="0.35" stop-color="#000" stop-opacity="0.62"/><stop offset="1" stop-color="#000" stop-opacity="0.78"/></linearGradient></defs>
+      <rect x="0" y="${size - bandH - Math.round(size * 0.08)}" width="${size}" height="${bandH + Math.round(size * 0.08)}" fill="url(#b)"/>
+    </svg>`,
+  );
+  const layer = await textLayer(text, Math.round(size * 0.86), Math.round(bandH * 0.62));
+  const meta = await sharp(layer).metadata();
+  const top = size - bandH + Math.round((bandH * 0.62 - (meta.height ?? 0)) / 2);
+  const layers: OverlayOptions[] = [
+    { input: band, left: 0, top: 0 },
+    { input: layer, left: Math.round((size - (meta.width ?? 0)) / 2), top },
+    ...(await footerLayer(opts.footer ?? "", size)),
+  ];
+  return finish(sharp(photo).composite(layers), size);
+}

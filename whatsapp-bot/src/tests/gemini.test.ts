@@ -37,7 +37,7 @@ const channel = config.channels[0]!;
 const usage: { inputTokens: number; outputTokens: number }[] = [];
 const llm = () => new GeminiLLM(config.settings, (u) => usage.push(u), new GoogleGenAI({ apiKey: "test-key", httpOptions: { baseUrl, retryOptions: { attempts: 1 } } }));
 const request = { channel, mode: "creative" as const, counts: { text: 2, poll: 1 }, usedKeys: ["חידת המדרגות"], samples: [], sources: [] };
-const DRAFT = { kind: "poll", text: "", poll_question: "מה עדיף?", poll_options: ["ים", "הרים"], card_text: "", visual_query: "", followup: "", topic_key: "ים או הרים", source_index: -1 };
+const DRAFT = { kind: "poll", text: "", poll_question: "מה עדיף?", poll_options: ["ים", "הרים"], card_text: "", visual_query: "", image_prompt: "", followup: "", topic_key: "ים או הרים", source_index: -1 };
 
 async function failure(): Promise<LLMError> {
   try {

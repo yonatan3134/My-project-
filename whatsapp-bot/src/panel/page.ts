@@ -79,6 +79,13 @@ export const PAGE = `<!doctype html>
   </section>
 
   <section class="card">
+    <h2>🧠 מודלים</h2>
+    <p class="hint">הבוט עובר לבד למודל הבא ברשימה כשמודל לא זמין.</p>
+    <div id="models"></div>
+    <p class="hint" id="imgs" style="margin-top:10px"></p>
+  </section>
+
+  <section class="card">
     <h2>📱 חיבור לוואטסאפ</h2>
     <div id="wa"></div>
   </section>
@@ -93,6 +100,7 @@ export const PAGE = `<!doctype html>
     </div>
     <details style="margin-top:10px"><summary class="hint">עוד הגדרות (לא חובה)</summary>
       <label>שם להתראות באפליקציית ntfy</label><input id="ntfyTopic" class="ltr" placeholder="שם ארוך וקשה לניחוש">
+      <label>מפתח Claude, כגיבוי כש-Gemini לא זמין <span id="claudeState"></span></label><input id="anthropicKey" type="password" class="ltr" placeholder="להשאיר ריק כדי לא לשנות" autocomplete="off">
       <label>מפתח Pexels לרקעים <span id="pexelsState"></span></label><input id="pexelsKey" type="password" class="ltr" placeholder="להשאיר ריק כדי לא לשנות" autocomplete="off">
     </details>
     <div class="row" style="margin-top:14px"><button id="saveSettings">שמירה</button><span class="hint">אחרי שמירה הבוט מופעל מחדש (כ-10 שניות)</span></div>
@@ -149,6 +157,10 @@ function render() {
   if (!loadQueue.loaded) { loadQueue.loaded = true; loadQueue(); }
   $("events").innerHTML = s.problems.map((p) => "<li>" + esc(p) + "</li>").join("");
   $("keyState").innerHTML = s.hasKey ? pill(true, "שמור") : pill(false, "חסר");
+  $("claudeState").innerHTML = s.hasClaude ? pill(true, "שמור") : "";
+  $("models").innerHTML = s.models.map((m, i) => '<div class="post"><div class="t ltr">' + (i + 1) + ". " + esc(m.name) +
+    (m.problem ? '<small style="color:var(--bad)">' + esc(m.problem) + "</small>" : m.lastUsedAt ? "<small>עובד ✓</small>" : "<small>מוכן</small>") + "</div></div>").join("");
+  $("imgs").textContent = s.images.enabled ? "🎨 תמונות AI היום: " + s.images.today + " מתוך " + s.images.max + " (אחרי זה: תמונה עם רקע צבעוני)" : "🎨 תמונות AI כבויות (אין מפתח Gemini)";
   $("pexelsState").innerHTML = s.hasPexels ? pill(true, "שמור") : "";
 
   let wa = "";
@@ -224,7 +236,8 @@ $("saveSettings").onclick = async () => {
   const body = { botPhone: $("botPhone").value, ownerPhone: $("ownerPhone").value, ntfyTopic: $("ntfyTopic").value };
   if ($("geminiKey").value.trim()) body.geminiKey = $("geminiKey").value.trim();
   if ($("pexelsKey").value.trim()) body.pexelsKey = $("pexelsKey").value.trim();
-  try { await post("/api/settings", body); $("geminiKey").value = ""; $("pexelsKey").value = ""; waitRestart("נשמר."); } catch (e) { toast(e.message); }
+  if ($("anthropicKey").value.trim()) body.anthropicKey = $("anthropicKey").value.trim();
+  try { await post("/api/settings", body); $("geminiKey").value = ""; $("pexelsKey").value = ""; $("anthropicKey").value = ""; waitRestart("נשמר."); } catch (e) { toast(e.message); }
 };
 ["botPhone", "ownerPhone", "ntfyTopic"].forEach((id) => $(id).addEventListener("input", () => editing = true));
 $("growthBtn").onclick = async () => { try { await post("/api/growth", { on: !S.growth }); toast(S.growth ? "מצב צמיחה כבוי" : "מצב צמיחה הופעל 🚀"); load(); } catch (e) { toast(e.message); } };

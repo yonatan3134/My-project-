@@ -51,7 +51,7 @@ const usage: { inputTokens: number; outputTokens: number }[] = [];
 const llm = () => new ClaudeLLM({ model: "claude-haiku-5-5", effort: "medium" }, (u) => usage.push(u), new Anthropic({ apiKey: "test-key", baseURL, maxRetries: 0 }));
 const request = { channel, mode: "creative" as const, counts: { text: 2, poll: 1 }, usedKeys: ["חידת המדרגות"], samples: ["חידה לדוגמה 🤔"], sources: [] };
 
-const DRAFT = { kind: "text", text: "חידה: מה תמיד מגיע אבל אף פעם לא כאן?", poll_question: "", poll_options: [], card_text: "", visual_query: "", followup: "התשובה: מחר!", topic_key: "חידת המחר", source_index: -1 };
+const DRAFT = { kind: "text", text: "חידה: מה תמיד מגיע אבל אף פעם לא כאן?", poll_question: "", poll_options: [], card_text: "", visual_query: "", image_prompt: "", followup: "התשובה: מחר!", topic_key: "חידת המחר", source_index: -1 };
 
 test("the writing request is well formed and the answer is parsed", async () => {
   reply = { status: 200, body: message(JSON.stringify({ posts: [DRAFT] })) };
