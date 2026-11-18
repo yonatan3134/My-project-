@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
+import { Database, type Param, type Statement } from "./sqlite.js";
 
 export type PostKind = "text" | "poll" | "image" | "video";
 
@@ -144,6 +144,13 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
 
+CREATE TABLE IF NOT EXISTS followers (
+  channel_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  count INTEGER NOT NULL,
+  PRIMARY KEY (channel_id, day)
+);
+
 CREATE TABLE IF NOT EXISTS usage (
   day_key TEXT PRIMARY KEY,
   calls INTEGER NOT NULL DEFAULT 0,
@@ -152,8 +159,8 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 `;
 
-/** Statuses that count as "already used" when looking for repeats. */
-const HISTORY_STATUSES = "('ready','sending','sent','unknown')";
+/** Statuses that count as "already used" when looking for repeats. A post the owner threw away is not written again either. */
+const HISTORY_STATUSES = "('ready','sending','sent','unknown','discarded')";
 
 interface RawQueueRow extends Omit<QueueRow, "payload"> {
   payload: string;
@@ -164,11 +171,11 @@ function toQueueRow(r: RawQueueRow): QueueRow {
 }
 
 export class Store {
-  readonly db: Database.Database;
+  readonly db: Database;
   /** compiled statements, reused: the scheduler runs the same few queries all day */
-  private statements = new Map<string, Database.Statement>();
+  private statements = new Map<string, Statement>();
 
-  private q(sql: string): Database.Statement {
+  private q(sql: string): Statement {
     let st = this.statements.get(sql);
     if (!st) {
       st = this.db.prepare(sql);
@@ -218,7 +225,7 @@ export class Store {
     if (keys.length === 0) return;
     this.channel(id);
     const sql = `UPDATE channels SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`;
-    this.q(sql).run(...keys.map((k) => fields[k] as string | number | null), id);
+    this.q(sql).run(...keys.map((k) => fields[k] as Param), id);
   }
 
   // ---- queue --------------------------------------------------------------
@@ -398,7 +405,47 @@ export class Store {
       )
       .run(keepPerChannel);
     this.q("DELETE FROM events WHERE ts < ?").run(now - 14 * 24 * 3600_000);
+    this.q("DELETE FROM followers WHERE day < ?").run(new Date(now - 120 * 24 * 3600_000).toISOString().slice(0, 10));
     this.q("DELETE FROM source_items WHERE fetched_at < ?").run(now - 30 * 24 * 3600_000);
+  }
+
+  /** Posts waiting to go out in a channel, in the order they will be sent. */
+  readyList(channelId: string, limit: number): { id: number; kind: string; payload: PostPayload; created_at: number }[] {
+    const rows = this.q(
+      "SELECT id, kind, payload, created_at FROM queue WHERE channel_id = ? AND status = 'ready' AND is_followup = 0 ORDER BY (source_item_id IS NULL), id LIMIT ?",
+    ).all(channelId, limit) as { id: number; kind: string; payload: string; created_at: number }[];
+    return rows.map((r) => ({ ...r, payload: JSON.parse(r.payload) as PostPayload }));
+  }
+
+  recentSent(limit: number): { id: number; channel_id: string; kind: string; payload: PostPayload; sent_at: number }[] {
+    const rows = this.q(
+      "SELECT id, channel_id, kind, payload, sent_at FROM queue WHERE status = 'sent' ORDER BY sent_at DESC LIMIT ?",
+    ).all(limit) as { id: number; channel_id: string; kind: string; payload: string; sent_at: number }[];
+    return rows.map((r) => ({ ...r, payload: JSON.parse(r.payload) as PostPayload }));
+  }
+
+  /** Throws away one waiting post. It still counts as used, so the same idea is not written again. */
+  discardOne(id: number, now: number): boolean {
+    return this.q("UPDATE queue SET status = 'discarded', updated_at = ? WHERE id = ? AND status = 'ready'").run(now, id).changes === 1;
+  }
+
+  // ---- followers ----------------------------------------------------------
+
+  recordFollowers(channelId: string, day: string, count: number): void {
+    this.q("INSERT INTO followers (channel_id, day, count) VALUES (?, ?, ?) ON CONFLICT(channel_id, day) DO UPDATE SET count = excluded.count").run(
+      channelId,
+      day,
+      count,
+    );
+  }
+
+  /** Latest follower count, and the change since about a week ago (null until there is a week of data). */
+  followers(channelId: string): { count: number | null; week: number | null } {
+    const rows = this.q("SELECT day, count FROM followers WHERE channel_id = ? ORDER BY day DESC LIMIT 8").all(channelId) as { day: string; count: number }[];
+    const latest = rows[0];
+    if (!latest) return { count: null, week: null };
+    const old = rows.length >= 8 ? rows[7] : undefined;
+    return { count: latest.count, week: old ? latest.count - old.count : null };
   }
 
   // ---- source items -------------------------------------------------------

@@ -23,7 +23,8 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y curl ca-certificates git nano sudo ffmpeg fonts-noto-core fonts-noto-color-emoji fonts-dejavu-core build-essential python3
 
-if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'Number(process.versions.node.split(".")[0])')" -lt 20 ]; then
+# the bot uses Node's built-in SQLite: Node 22.13 or newer
+if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'const [a,b]=process.versions.node.split(".").map(Number); a>22||(a===22&&b>=13)?1:0')" != "1" ]; then
   echo "==> Node.js 22"
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs

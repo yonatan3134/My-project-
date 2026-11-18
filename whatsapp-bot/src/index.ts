@@ -6,7 +6,7 @@ import { aiKey, EDITED_CHANNELS_FILE, inviteCode, loadConfig, parseConfig, type 
 import { refillChannel, type GenContext } from "./content/generator.js";
 import { createLLM, FakeLLM, type LLM } from "./content/llm.js";
 import { Control } from "./control.js";
-import { Store } from "./db.js";
+import { Store, type PostPayload } from "./db.js";
 import { logger } from "./logger.js";
 import { DefaultMedia } from "./media/maker.js";
 import { ffmpegAvailable } from "./media/video.js";
@@ -27,6 +27,13 @@ function isLinked(): boolean {
   } catch {
     return false;
   }
+}
+
+/** One readable line for a post, for the settings website. */
+function preview(p: PostPayload): string {
+  if (p.kind === "poll") return `📊 ${p.pollQuestion ?? ""} (${(p.pollOptions ?? []).join(" / ")})`;
+  if (p.kind === "image" || p.kind === "video") return `${p.kind === "image" ? "🖼️" : "🎬"} ${[p.cardText, p.text].filter(Boolean).join(" · ")}`;
+  return p.text;
 }
 
 function clearSession(): void {
@@ -161,6 +168,7 @@ async function main(): Promise<void> {
     try {
       for (const channel of scheduler.activeChannels(now())) {
         const res = await refillChannel(gen, channel, now());
+        if (!res.llmError && res.queued > 0) store.set("llm_rl_streak", "0");
         if (res.queued > 0) logger.info({ channel: channel.id, queued: res.queued, dropped: res.rejected.length }, "queue refilled");
         const err = res.llmError;
         if (!err) continue;
@@ -168,8 +176,13 @@ async function main(): Promise<void> {
           await control.alert("llm_config", `בעיה מול שירות ה-AI: ${err.message}. בדוק את המפתח ב-.env ואת היתרה בחשבון.`);
         }
         if (["auth", "rate_limit", "network", "server", "bad_request"].includes(err.kind)) {
-          // a problem with the service, not with one channel: stop asking until it has had time to clear
-          store.set("llm_pause_until", String(now() + err.retryAfterMs));
+          // a problem with the service, not with one channel: stop asking until it has had time to clear.
+          // Repeated rate limits usually mean the daily free quota is used up, so the wait grows, up to 3 hours.
+          const streak = err.kind === "rate_limit" ? (store.getNumber("llm_rl_streak") ?? 0) + 1 : 0;
+          store.set("llm_rl_streak", String(streak));
+          const wait = err.kind === "rate_limit" ? Math.min(err.retryAfterMs * 2 ** (streak - 1), 3 * HOUR) : err.retryAfterMs;
+          store.set("llm_pause_until", String(now() + wait));
+          if (streak === 4) await control.alert("llm_quota", "שירות ה-AI מגביל את הבוט שוב ושוב. כנראה נגמרה המכסה החינמית היומית של Gemini. הבוט ימשיך כשהמכסה תתחדש.", 12 * HOUR);
           break;
         }
       }
@@ -249,9 +262,14 @@ async function main(): Promise<void> {
             activeChannels: active.length,
             postingChannels: postingChannels(config.channels).length,
             problems,
+            recent: store.recentSent(12).map((r) => ({ channel: config.channels.find((c) => c.id === r.channel_id)?.name ?? r.channel_id, kind: r.kind, text: preview(r.payload), at: r.sent_at })),
             channels: config.channels.map((c) => {
               const st = store.channel(c.id);
-              return { id: c.id, name: c.name, invite: c.invite, mode: c.mode, topic: c.topic, queries: c.news?.queries ?? [], enabled: c.enabled, role: st.role, sentToday: perChannel.get(c.id) ?? 0 };
+              const f = store.followers(c.id);
+              return {
+                id: c.id, name: c.name, invite: c.invite, mode: c.mode, topic: c.topic, queries: c.news?.queries ?? [], enabled: c.enabled,
+                role: st.role, sentToday: perChannel.get(c.id) ?? 0, ready: store.readyCount(c.id), followers: f.count, followersWeek: f.week,
+              };
             }),
           };
         },
@@ -342,6 +360,8 @@ async function main(): Promise<void> {
         },
         setPaused: (paused) => store.set("paused", paused ? "1" : "0"),
         setGrowth: (on) => store.set("growth", on ? "1" : "0"),
+        queue: (channelId) => store.readyList(channelId, 20).map((r) => ({ id: r.id, kind: r.kind, text: preview(r.payload) })),
+        discard: (id) => (store.discardOne(id, now()) ? null : "הפוסט כבר לא בתור"),
       },
       port,
     );

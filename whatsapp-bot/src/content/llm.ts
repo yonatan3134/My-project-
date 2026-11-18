@@ -181,9 +181,47 @@ export class GeminiLLM implements LLM {
   }
 }
 
-/** The model the bot is configured to use. */
+/**
+ * Spaces calls out. Free AI plans allow only a few requests a minute; when
+ * many channels refill at once (for example right after starting) the calls
+ * would otherwise hit that limit and fail.
+ */
+export class PacedLLM implements LLM {
+  private next = 0;
+  private chain: Promise<unknown> = Promise.resolve();
+
+  constructor(
+    private inner: LLM,
+    private gapMs: number,
+    private sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+    private clock: () => number = Date.now,
+  ) {}
+
+  private paced<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(async () => {
+      const wait = this.next - this.clock();
+      if (wait > 0) await this.sleep(wait);
+      this.next = this.clock() + this.gapMs;
+      return fn();
+    });
+    this.chain = run.catch(() => {});
+    return run;
+  }
+
+  write(req: WriterRequest): Promise<Draft[]> {
+    return this.paced(() => this.inner.write(req));
+  }
+
+  review(channel: ChannelConfig, items: ReviewItem[], sources: SourceItem[]): Promise<Verdict[]> {
+    return this.paced(() => this.inner.review(channel, items, sources));
+  }
+}
+
+/** The model the bot is configured to use, paced to stay inside free-plan limits. */
 export function createLLM(settings: Pick<Settings, "provider" | "model" | "effort">, onUsage: (u: Usage) => void = () => {}): LLM {
-  return settings.provider === "claude" ? new ClaudeLLM(settings, onUsage) : new GeminiLLM(settings, onUsage);
+  const inner = settings.provider === "claude" ? new ClaudeLLM(settings, onUsage) : new GeminiLLM(settings, onUsage);
+  // Gemini's free plan allows about 10-15 requests a minute; one every 6 seconds stays under that
+  return new PacedLLM(inner, settings.provider === "claude" ? 1000 : 6000);
 }
 
 /**
