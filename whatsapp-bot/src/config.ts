@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
 import { z } from "zod";
-import { CONFIG_DIR, ROOT } from "./paths.js";
+import { CONFIG_DIR, DATA_DIR, ROOT } from "./paths.js";
 
 dotenv.config({ path: path.join(ROOT, ".env"), quiet: true });
 
@@ -151,6 +151,8 @@ function digits(v: string | undefined): string | null {
   return d.length >= 8 ? d : null;
 }
 
+export const EDITED_CHANNELS_FILE = path.join(DATA_DIR, "channels.json");
+
 export function loadEnv(): Env {
   return {
     botPhone: digits(process.env.BOT_PHONE),
@@ -206,7 +208,9 @@ export function aiKey(config: Pick<AppConfig, "settings" | "env">): { name: stri
 export function loadConfig(dir: string = CONFIG_DIR): AppConfig {
   const settingsFile = path.join(dir, "settings.json");
   const settingsRaw = fs.existsSync(settingsFile) ? readJson(settingsFile) : {};
-  const channelsRaw = readJson(path.join(dir, "channels.json"));
+  // channels edited on the settings website are kept with the bot's data, so updates from GitHub never overwrite them
+  const edited = path.join(DATA_DIR, "channels.json");
+  const channelsRaw = readJson(dir === CONFIG_DIR && fs.existsSync(edited) ? edited : path.join(dir, "channels.json"));
   return { ...parseConfig(settingsRaw, channelsRaw), env: loadEnv() };
 }
 

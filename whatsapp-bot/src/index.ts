@@ -1,7 +1,8 @@
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { WAMessage } from "baileys";
-import { aiKey, loadConfig } from "./config.js";
+import { aiKey, EDITED_CHANNELS_FILE, inviteCode, loadConfig, parseConfig, type ChannelConfig } from "./config.js";
 import { refillChannel, type GenContext } from "./content/generator.js";
 import { createLLM, FakeLLM, type LLM } from "./content/llm.js";
 import { Control } from "./control.js";
@@ -9,15 +10,34 @@ import { Store } from "./db.js";
 import { logger } from "./logger.js";
 import { DefaultMedia } from "./media/maker.js";
 import { ffmpegAvailable } from "./media/video.js";
-import { DB_PATH, TMP_DIR, ensureDirs } from "./paths.js";
+import { AUTH_DIR, DB_PATH, TMP_DIR, ensureDirs } from "./paths.js";
+import { updateEnvFile } from "./panel/envfile.js";
+import { startPanel } from "./panel/server.js";
 import { Scheduler, postingChannels } from "./scheduler.js";
 import { HOUR, MINUTE, dayKey, sleep } from "./time.js";
 import { recentPostTexts, resolveChannels } from "./wa/channels.js";
 import { WaClient } from "./wa/client.js";
 import { DryRunSender, WaSender, type Sender } from "./wa/sender.js";
 
-/** Exit code that tells systemd not to restart: a person has to link the account again first. */
-const EXIT_NEEDS_LINK = 78;
+/** True when a WhatsApp session has been saved (the bot was linked). */
+function isLinked(): boolean {
+  try {
+    const creds = JSON.parse(fsSync.readFileSync(`${AUTH_DIR}/creds.json`, "utf8")) as { me?: { id?: string } };
+    return Boolean(creds.me?.id);
+  } catch {
+    return false;
+  }
+}
+
+function clearSession(): void {
+  fsSync.rmSync(AUTH_DIR, { recursive: true, force: true });
+  fsSync.mkdirSync(AUTH_DIR, { recursive: true });
+}
+
+/** systemd starts the bot again a few seconds after it exits, with the new settings. */
+function restartSoon(): void {
+  setTimeout(() => process.kill(process.pid, "SIGTERM"), 700);
+}
 
 async function main(): Promise<void> {
   ensureDirs();
@@ -31,17 +51,18 @@ async function main(): Promise<void> {
     store.event(now(), "warn", "interrupted", `${interrupted} post(s) were mid-send when the bot stopped; they will not be sent again`);
   }
 
-  if (!env.fakeLlm && !aiKey(config).present) {
-    logger.error(`${aiKey(config).name} is missing. Put it in the .env file (see .env.example).`);
-    process.exit(1);
-  }
-  const llm: LLM = env.fakeLlm
+  const hasKey = env.fakeLlm || aiKey(config).present;
+  if (!hasKey) logger.warn(`${aiKey(config).name} is missing: no posts are written until it is added on the settings website`);
+  const llm: LLM | null = env.fakeLlm
     ? new FakeLLM()
-    : createLLM(settings, (u) => store.addUsage(dayKey(now(), settings.timezone), u.inputTokens, u.outputTokens));
+    : hasKey
+      ? createLLM(settings, (u) => store.addUsage(dayKey(now(), settings.timezone), u.inputTokens, u.outputTokens))
+      : null;
 
   const videoAvailable = await ffmpegAvailable();
   if (!videoAvailable) logger.warn("ffmpeg was not found: video posts will be sent as pictures");
 
+  const linkState: { code: string | null; error: string | null } = { code: null, error: null };
   let client: WaClient | null = null;
   let sender: Sender;
   let direct: (jid: string, text: string) => Promise<boolean> = async () => false;
@@ -52,11 +73,14 @@ async function main(): Promise<void> {
     for (const c of config.channels) {
       if (!store.channel(c.id).jid) store.updateChannel(c.id, { jid: `dry-${c.id}@newsletter`, role: "ADMIN", resolved_at: now() });
     }
-  } else {
+  } else if (isLinked()) {
     client = new WaClient({ allowLinking: false, pairingPhone: null });
     const wa = new WaSender(client, store);
     sender = wa;
     direct = (jid, text) => wa.direct(jid, text);
+  } else {
+    logger.warn("the bot is not linked to WhatsApp yet: open the settings website to link it");
+    sender = new DryRunSender({ saveMedia: false, quiet: true });
   }
 
   const scheduler = new Scheduler({
@@ -65,7 +89,7 @@ async function main(): Promise<void> {
     sender,
     media: new DefaultMedia(env.pexelsKey, (m) => store.event(now(), "info", "media_note", m)),
     now,
-    isConnected: () => (client ? client.isOpen : true),
+    isConnected: () => (client ? client.isOpen : env.dryRun),
   });
 
   const control = new Control({
@@ -113,9 +137,9 @@ async function main(): Promise<void> {
     client.on("logged_out", (reason: string) => {
       void (async () => {
         store.event(now(), "error", "logged_out", reason);
-        await control.alert("logged_out", `הבוט התנתק מוואטסאפ וצריך לחבר אותו מחדש (${reason}). בשרת: npm run link ואז systemctl start whatsapp-bot`, HOUR);
-        store.close();
-        process.exit(EXIT_NEEDS_LINK);
+        clearSession();
+        linkState.error = "וואטסאפ ניתקה את הבוט. צריך לחבר אותו מחדש.";
+        await control.alert("logged_out", `הבוט התנתק מוואטסאפ (${reason}). נכנסים לאתר ההגדרות ולוחצים "לקבל קוד חיבור".`, HOUR);
       })();
     });
     await client.start();
@@ -123,11 +147,11 @@ async function main(): Promise<void> {
 
   // ---- loops ----------------------------------------------------------------
 
-  const gen: GenContext = { store, llm, settings, videoAvailable };
+  const gen: GenContext | null = llm ? { store, llm, settings, videoAvailable } : null;
   let refilling = false;
 
   async function refillAll(): Promise<void> {
-    if (refilling || scheduler.isPaused()) return;
+    if (!gen || refilling || scheduler.isPaused()) return;
     if ((store.getNumber("llm_pause_until") ?? 0) > now()) return;
     refilling = true;
     try {
@@ -186,11 +210,143 @@ async function main(): Promise<void> {
   ];
   guard("refill", refillAll)();
 
+  // ---- settings website ------------------------------------------------------
+
+  let linker: WaClient | null = null;
+  const port = Number(process.env.PANEL_PORT ?? 80);
+  if (process.env.PANEL !== "0") {
+    startPanel(
+      {
+        state: () => {
+          const day = dayKey(now(), settings.timezone);
+          const totals = store.totals(day);
+          const perChannel = store.sentPerChannel(day);
+          const active = scheduler.activeChannels(now());
+          const problems = store
+            .eventsSince(now() - 6 * HOUR)
+            .filter((e) => e.level !== "info")
+            .slice(0, 8)
+            .map((e) => `${new Date(e.ts).toLocaleTimeString("he-IL", { timeZone: settings.timezone, hour12: false })} ${e.channel_id ?? ""} ${e.message}`.trim());
+          return {
+            connection: client ? (client.isOpen ? "open" : client.status) : env.dryRun ? "open" : "not_linked",
+            linked: Boolean(client) && isLinked(),
+            linking: Boolean(linker),
+            pairingCode: linkState.code,
+            linkError: linkState.error,
+            hasKey,
+            hasPexels: Boolean(env.pexelsKey),
+            botPhone: env.botPhone ?? "",
+            ownerPhone: env.ownerPhone ?? "",
+            ntfyTopic: env.ntfyTopic ?? "",
+            paused: scheduler.isPaused(),
+            today: { sent: totals.sent, ready: totals.ready },
+            usage: store.usage(day),
+            activeChannels: active.length,
+            postingChannels: postingChannels(config.channels).length,
+            problems,
+            channels: config.channels.map((c) => {
+              const st = store.channel(c.id);
+              return { id: c.id, name: c.name, invite: c.invite, mode: c.mode, topic: c.topic, queries: c.news?.queries ?? [], enabled: c.enabled, role: st.role, sentToday: perChannel.get(c.id) ?? 0 };
+            }),
+          };
+        },
+        saveSettings: async (b) => {
+          const str = (v: unknown) => (typeof v === "string" ? v : "");
+          const phone = (v: unknown) => str(v).replace(/\D/g, "").replace(/^0(?=5)/, "972");
+          const values: Record<string, string> = {
+            BOT_PHONE: phone(b.botPhone),
+            OWNER_PHONE: phone(b.ownerPhone),
+            NTFY_TOPIC: str(b.ntfyTopic).replace(/[^A-Za-z0-9_-]/g, ""),
+          };
+          for (const [k, v] of [["BOT_PHONE", values.BOT_PHONE], ["OWNER_PHONE", values.OWNER_PHONE]] as const) {
+            if (v && (v.length < 10 || v.length > 15)) return `המספר ב-${k === "BOT_PHONE" ? "מספר הבוט" : "המספר שלך"} לא נראה תקין. כותבים כך: 972501234567`;
+          }
+          if (str(b.geminiKey)) values.GEMINI_API_KEY = str(b.geminiKey);
+          if (str(b.pexelsKey)) values.PEXELS_API_KEY = str(b.pexelsKey);
+          if (values.BOT_PHONE && env.botPhone && values.BOT_PHONE !== env.botPhone && isLinked()) {
+            clearSession(); // a different bot number needs a new link
+          }
+          updateEnvFile(values);
+          restartSoon();
+          return null;
+        },
+        saveChannels: async (b) => {
+          if (!Array.isArray(b.channels)) return "רשימה לא תקינה";
+          const old = new Map(config.channels.map((c) => [c.id, c]));
+          const used = new Set<string>();
+          const list: ChannelConfig[] = [];
+          for (const raw of b.channels as Record<string, unknown>[]) {
+            const name = String(raw.name ?? "").trim();
+            const invite = inviteCode(String(raw.invite ?? ""));
+            if (!name && !invite) continue;
+            if (!name) return "יש ערוץ בלי שם";
+            if (!/^0029V[A-Za-z0-9]{10,}$/.test(invite)) return `הקישור של "${name}" לא נראה כמו קישור לערוץ וואטסאפ`;
+            const prev = typeof raw.id === "string" ? old.get(raw.id) : undefined;
+            let id = prev?.id ?? `ch-${invite.slice(-8).toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+            while (used.has(id)) id = `${id}-x`;
+            used.add(id);
+            const queries = Array.isArray(raw.queries) ? raw.queries.map(String).map((q) => q.trim()).filter(Boolean).slice(0, 5) : [];
+            const mode = String(raw.mode ?? "creative") as ChannelConfig["mode"];
+            const next: Record<string, unknown> = { ...(prev ?? {}), id, name, invite, mode, topic: String(raw.topic ?? "").trim(), enabled: raw.enabled !== false };
+            if (queries.length > 0) next.news = { feeds: [], ...(prev?.news ?? {}), queries };
+            else delete next.news;
+            list.push(next as ChannelConfig);
+          }
+          try {
+            parseConfig(settings, list);
+          } catch (err) {
+            return `ההגדרות לא תקינות: ${(err as Error).message.slice(0, 200)}`;
+          }
+          fsSync.writeFileSync(EDITED_CHANNELS_FILE, JSON.stringify(list, null, 2));
+          restartSoon();
+          return null;
+        },
+        startLink: async () => {
+          if (env.dryRun) return "מצב בדיקה";
+          if (client && isLinked()) return "הבוט כבר מחובר";
+          if (linker) return null;
+          if (!env.botPhone) return "קודם שומרים את המספר של הבוט";
+          clearSession();
+          linkState.code = null;
+          linkState.error = null;
+          const l = new WaClient({ allowLinking: true, pairingPhone: env.botPhone });
+          linker = l;
+          const give = setTimeout(() => {
+            if (linker !== l) return;
+            linkState.error = "הקוד לא הוקלד בזמן. אפשר לבקש קוד חדש.";
+            linkState.code = null;
+            linker = null;
+            void l.stop();
+          }, 4 * MINUTE);
+          l.on("pairing_code", (code: string) => (linkState.code = `${code.slice(0, 4)}-${code.slice(4)}`));
+          l.on("logged_out", (reason: string) => {
+            clearTimeout(give);
+            linkState.error = `וואטסאפ דחתה את החיבור (${reason}). בודקים את המספר ומנסים שוב.`;
+            linkState.code = null;
+            linker = null;
+          });
+          l.on("open", () => {
+            clearTimeout(give);
+            linkState.code = null;
+            logger.info("linked to WhatsApp, restarting");
+            // give the library a moment to save the session, then start normally
+            setTimeout(() => void l.stop().then(restartSoon), 6000);
+          });
+          await l.start();
+          return null;
+        },
+        setPaused: (paused) => store.set("paused", paused ? "1" : "0"),
+      },
+      port,
+    );
+  }
+
   const shutdown = (signal: string) => {
     logger.info({ signal }, "shutting down");
     for (const t of timers) clearInterval(t);
     void (async () => {
       if (client) await client.stop();
+      if (linker) await linker.stop();
       store.close();
       process.exit(0);
     })();

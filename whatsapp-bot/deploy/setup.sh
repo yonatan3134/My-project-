@@ -50,15 +50,28 @@ sed -e "s|__DIR__|$DIR|g" deploy/bot > /usr/local/bin/bot
 chmod 755 /usr/local/bin/bot
 systemctl daemon-reload
 systemctl enable whatsapp-bot >/dev/null
+systemctl restart whatsapp-bot
 
-cat <<'DONE'
+echo "==> waiting for the settings website"
+for _ in $(seq 1 30); do [ -s "$DIR/data/panel-password" ] && break; sleep 1; done
+IP="$(curl -s -m 3 -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip || true)"
+[ -n "$IP" ] || IP="$(curl -s -m 5 https://api.ipify.org || echo 'כתובת-השרת')"
 
-ההתקנה הסתיימה. השלבים הבאים:
-  1. bot env        למלא את המפתח ואת המספרים (שמירה: Ctrl+O, Enter, יציאה: Ctrl+X)
-  2. bot doctor     לוודא שהכול תקין
-  3. bot link       לחבר את הבוט לוואטסאפ
-  4. bot check      לוודא שהבוט מנהל בערוצים
-  5. bot preview riddles   לראות פוסטים לדוגמה
-  6. bot test riddles      לשלוח 4 פוסטים לבדיקה לערוץ אחד, ולבדוק בטלפון מה הגיע
-  7. bot start      להפעיל
+cat <<DONE
+
+==============================================
+ הבוט מותקן ורץ 24/7.
+
+ אתר ההגדרות:  http://$IP
+ סיסמה:        $(cat "$DIR/data/panel-password" 2>/dev/null)
+ (שם משתמש: כל דבר)
+==============================================
+
+באתר: שומרים מפתח Gemini ומספרים, לוחצים "לקבל קוד חיבור"
+ומקלידים את הקוד בטלפון של הבוט.
+
+אם האתר לא נפתח: בגוגל קלאוד צריך לאפשר HTTP לשרת
+(VM instances > השרת > Edit > Allow HTTP traffic > Save).
+
+שכחת את הסיסמה?  bot password
 DONE

@@ -27,6 +27,7 @@ case "$cmd" in
   test)     exclusive test-channel -- "$@" ;;
   preview)  as_bot npm run --silent preview -- "$@" ;;
   doctor)   as_bot npm run --silent doctor ;;
+  password) echo "סיסמה לאתר ההגדרות: $(cat "$DIR/data/panel-password")" ;;
   simulate) as_bot npm run --silent simulate -- "$@" ;;
   start|stop|restart) systemctl "$cmd" "$SERVICE"; echo "בוצע: $cmd" ;;
   status)   systemctl status "$SERVICE" --no-pager | head -12 || true ;;
@@ -44,6 +45,7 @@ case "$cmd" in
   *)
     cat <<'HELP'
 פקודות:
+  bot password        הסיסמה לאתר ההגדרות
   bot doctor          בודק שהכול מותקן ומוגדר
   bot link            מחבר את הבוט לוואטסאפ (פעם אחת, ושוב אם הוא התנתק)
   bot check           בודק שהבוט מנהל בכל הערוצים
