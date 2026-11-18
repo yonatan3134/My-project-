@@ -182,7 +182,8 @@ function render() {
 
   if (!editing) {
     $("botPhone").value = s.botPhone || ""; $("ownerPhone").value = s.ownerPhone || ""; $("ntfyTopic").value = s.ntfyTopic || "";
-    renderChannels(s.channels);
+    // the page refreshes every few seconds; never redraw the list while a channel's settings are open
+    if (!document.querySelector(".ch details[open]")) renderChannels(s.channels);
   }
 }
 
