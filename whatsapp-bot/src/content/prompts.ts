@@ -59,6 +59,13 @@ const MODE_BRIEF: Record<"creative" | "fandom" | "news", string> = {
     "This channel publishes only real information. Write a post only for a SOURCE ITEM that is clearly about the channel topic; skip items that are off-topic, advertisements or rumors. Use only what the item itself says. End each post with a last line in the form (מקור: NAME) using the item's source name. If no item qualifies, return an empty posts array.",
 };
 
+/** Extra guidance while growth mode is on. Engagement is what keeps a channel high in WhatsApp's "most active" lists. */
+export const GROWTH_BRIEF = `GROWTH MODE: the channel is trying to gain followers. Write posts people react to and send to friends.
+- Open with the most interesting part; the first line is all that shows in the notification.
+- About one post in three ends with a short invitation to react with a specific emoji (for example "מסכימים? תגיבו 🔥") or to send the post to a friend who would like it. Vary the wording; never ask for both in the same post.
+- Prefer ideas that split opinions (good for polls) and ideas people want to share (surprising, funny, relatable).
+- Never beg for follows, never promise prizes for sharing, and never use alarm or urgency to get forwards.`;
+
 export interface WriterRequest {
   channel: ChannelConfig;
   mode: "creative" | "fandom" | "news";
@@ -67,6 +74,8 @@ export interface WriterRequest {
   usedKeys: string[];
   samples: string[];
   sources: SourceItem[];
+  /** growth mode: write for reactions, votes and forwards */
+  growth?: boolean;
 }
 
 function clip(s: string, max: number): string {
@@ -97,6 +106,7 @@ export function writerPrompt(req: WriterRequest): string {
   if (channel.topic) parts.push(`CONCEPT: ${channel.topic}`);
   parts.push(MODE_BRIEF[mode]);
   if (channel.rules) parts.push(`EXTRA RULES FOR THIS CHANNEL: ${channel.rules}`);
+  if (req.growth) parts.push(GROWTH_BRIEF);
 
   if (req.samples.length > 0) {
     parts.push(`SAMPLE POSTS FROM THIS CHANNEL (for tone and length only)\n${req.samples.map((s) => `- ${clip(s, 400)}`).join("\n")}`);

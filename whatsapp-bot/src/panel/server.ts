@@ -28,6 +28,7 @@ export interface PanelApi {
   saveChannels(body: Record<string, unknown>): Promise<string | null>;
   startLink(): Promise<string | null>;
   setPaused(paused: boolean): void;
+  setGrowth(on: boolean): void;
 }
 
 const MAX_BODY = 512 * 1024;
@@ -124,6 +125,9 @@ export function startPanel(api: PanelApi, port: number): http.Server {
             break;
           case "/api/pause":
             api.setPaused(body.paused === true);
+            break;
+          case "/api/growth":
+            api.setGrowth(body.on === true);
             break;
           default:
             return send(res, 404, { error: "not found" });

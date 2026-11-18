@@ -231,3 +231,24 @@ test("gradual start and warm-up on the real configuration", async () => {
   assert.ok(!posts.some((r) => r.channel_id === "ai-images"));
   void DAY;
 });
+
+test("growth mode: silent at night, one recommendation of another channel per channel per day", async () => {
+  const config = makeConfig([
+    { id: "a", mode: "creative", formats: { text: 1, poll: 0, image: 0, video: 0 } },
+    { id: "b", mode: "creative", formats: { text: 1, poll: 0, image: 0, video: 0 } },
+  ]);
+  const store = new Store(":memory:");
+  store.set("growth", "1");
+  const sender = new ScriptedSender();
+  await simulate({ config, days: 2, start: START, sender, store });
+  const rows = sentRows(store);
+  const hour = (t: number) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", hourCycle: "h23" }).format(new Date(t)));
+  assert.ok(rows.length > 10);
+  assert.equal(rows.filter((r) => hour(r.sent_at) < 7).length, 0, "posted at night");
+  const promos = rows.filter((r) => JSON.parse(r.payload).text?.includes("whatsapp.com/channel/"));
+  for (const id of ["a", "b"]) {
+    const mine = promos.filter((r) => r.channel_id === id);
+    assert.equal(mine.length, 2, `${id}: one promotion a day`);
+    for (const p of mine) assert.doesNotMatch(JSON.parse(p.payload).text, new RegExp(id === "a" ? "ערוץ a\\*" : "ערוץ b\\*"));
+  }
+});

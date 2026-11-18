@@ -50,6 +50,18 @@ export const PAGE = `<!doctype html>
   </section>
 
   <section class="card">
+    <h2>🚀 מצב צמיחה</h2>
+    <p class="hint">מתאים את הבוט למה שעוזר לערוצים לגדול בוואטסאפ:</p>
+    <ul class="hint" style="margin:0 0 12px;padding-right:18px">
+      <li>יותר סקרים, סוג הפוסט שמקבל הכי הרבה תגובות</li>
+      <li>פוסטים שמזמינים להגיב באימוג'י או לשלוח לחבר</li>
+      <li>שקט בלילה (00:00-07:00), כשכולם ישנים</li>
+      <li>פעם ביום כל ערוץ ממליץ על ערוץ אחר שלך, עם קישור</li>
+    </ul>
+    <button id="growthBtn"></button>
+  </section>
+
+  <section class="card">
     <h2>📱 חיבור לוואטסאפ</h2>
     <div id="wa"></div>
   </section>
@@ -106,6 +118,8 @@ function render() {
     ["ערוצים פעילים", s.activeChannels + "/" + s.postingChannels],
     ["קריאות AI היום", s.usage.calls],
   ].map(([t, v]) => '<div class="stat"><b>' + esc(v) + "</b><span>" + t + "</span></div>").join("");
+  $("growthBtn").textContent = s.growth ? "✅ מצב צמיחה פועל · לכבות" : "🚀 להפעיל מצב צמיחה";
+  $("growthBtn").className = s.growth ? "light" : "";
   $("pauseBtn").textContent = s.paused ? "▶️ להחזיר את הפרסומים" : "⏸ לעצור את כל הפרסומים";
   $("events").innerHTML = s.problems.map((p) => "<li>" + esc(p) + "</li>").join("");
   $("keyState").innerHTML = s.hasKey ? pill(true, "שמור") : pill(false, "חסר");
@@ -185,6 +199,7 @@ $("saveSettings").onclick = async () => {
   try { await post("/api/settings", body); $("geminiKey").value = ""; $("pexelsKey").value = ""; waitRestart("נשמר."); } catch (e) { toast(e.message); }
 };
 ["botPhone", "ownerPhone", "ntfyTopic"].forEach((id) => $(id).addEventListener("input", () => editing = true));
+$("growthBtn").onclick = async () => { try { await post("/api/growth", { on: !S.growth }); toast(S.growth ? "מצב צמיחה כבוי" : "מצב צמיחה הופעל 🚀"); load(); } catch (e) { toast(e.message); } };
 $("pauseBtn").onclick = async () => { try { await post("/api/pause", { paused: !S.paused }); load(); } catch (e) { toast(e.message); } };
 
 async function load() {

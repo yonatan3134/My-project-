@@ -44,7 +44,7 @@ Hetzner Cloud, התוכנית הקטנה ביותר עם 4GB זיכרון (נק�
 
 ```bash
 apt-get update && apt-get install -y git
-git clone -b claude/whatsapp-channels-automation-0am70v https://github.com/yonatan3134/My-project-.git /opt/bot
+git clone https://github.com/yonatan3134/My-project-.git /opt/bot
 cd /opt/bot/whatsapp-bot
 bash deploy/setup.sh
 ```
@@ -64,6 +64,16 @@ bash deploy/setup.sh
 **אם האתר לא נפתח:** בגוגל קלאוד צריך לאפשר HTTP. VM instances > השרת > Edit > לסמן Allow HTTP traffic > Save.
 
 **שכחת סיסמה:** `bot password` בשרת.
+
+### מצב צמיחה 🚀
+
+כפתור באתר. כשהוא פועל:
+- יותר סקרים, כי לפי המדריכים שמצאתי זה סוג הפוסט שמקבל הכי הרבה תגובות.
+- כשליש מהפוסטים מזמינים להגיב באימוג'י או לשלוח לחבר.
+- שקט בלילה (00:00-07:00), אלא אם הוגדר `quietHours` אחר.
+- פעם ביום כל ערוץ ממליץ על ערוץ אחר שלך עם קישור, עדיף באותו נושא.
+
+ל-WhatsApp אין מדריך רשמי לאלגוריתם. מה שידוע: במדריך הערוצים יש רשימות "פעילים ביותר" ו"פופולריים" (לפי מספר עוקבים), והמלצות לפי מדינה. שאר הכללים כאן נלקחו ממדריכים של חברות שיווק ולא נבדקו.
 
 **חשוב לדעת:** האתר הוא `http` ולא `https`, כלומר התקשורת אליו לא מוצפנת. זה בסדר מהבית, אבל לא כדאי להקליד את המפתח והסיסמה מרשת WiFi ציבורית.
 

@@ -239,6 +239,7 @@ async function main(): Promise<void> {
             ownerPhone: env.ownerPhone ?? "",
             ntfyTopic: env.ntfyTopic ?? "",
             paused: scheduler.isPaused(),
+            growth: scheduler.growth(),
             today: { sent: totals.sent, ready: totals.ready },
             usage: store.usage(day),
             activeChannels: active.length,
@@ -336,6 +337,7 @@ async function main(): Promise<void> {
           return null;
         },
         setPaused: (paused) => store.set("paused", paused ? "1" : "0"),
+        setGrowth: (on) => store.set("growth", on ? "1" : "0"),
       },
       port,
     );

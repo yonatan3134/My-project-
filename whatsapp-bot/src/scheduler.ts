@@ -86,8 +86,11 @@ export function minSpacingMs(cap: number | null): number {
   return cap === null ? 0 : Math.floor((DAY / cap) * 0.6);
 }
 
-export function inQuietHours(s: Settings, now: number): boolean {
-  const q = s.quietHours;
+/** In growth mode the bot stays quiet at night: posts sent while followers sleep get buried and annoy. */
+export const GROWTH_QUIET = { from: 0, to: 7 };
+
+export function inQuietHours(s: Settings, now: number, growth = false): boolean {
+  const q = s.quietHours ?? (growth ? GROWTH_QUIET : null);
   if (!q || q.from === q.to) return false;
   const h = hourOfDay(now, s.timezone);
   return q.from < q.to ? h >= q.from && h < q.to : h >= q.from || h < q.to;
@@ -129,6 +132,10 @@ export class Scheduler {
 
   private rand(): number {
     return (this.d.random ?? Math.random)();
+  }
+
+  growth(): boolean {
+    return this.d.store.get("growth") === "1";
   }
 
   isPaused(): boolean {
@@ -208,7 +215,7 @@ export class Scheduler {
         store.markStatus(row.id, "discarded", now);
         continue;
       }
-      if (inQuietHours(this.s, now)) continue;
+      if (inQuietHours(this.s, now, this.growth())) continue;
       await this.publish(row, channel, state.jid, now);
       return true;
     }
@@ -234,7 +241,7 @@ export class Scheduler {
       // whatever happens below, this slot is used up
       store.updateChannel(channel.id, { last_slot_ts: slot });
       if (state.paused) continue;
-      if (inQuietHours(this.s, now)) continue;
+      if (inQuietHours(this.s, now, this.growth())) continue;
       if (!state.jid) {
         store.event(now, "warn", "not_resolved", "channel address is not known yet", channel.id);
         continue;
@@ -317,6 +324,7 @@ export class Scheduler {
         store.enqueue({ channelId: channel.id, payload: { kind: "text", text: row.payload.followup }, notBefore: now + delay, isFollowup: true, now });
       }
       if (res.sentAs === "poll" && !row.is_followup) this.maybeInvade(channel, now);
+      if (!row.is_followup && this.growth()) this.maybePromote(channel, now);
       return;
     }
 
@@ -331,6 +339,33 @@ export class Scheduler {
       store.markStatus(row.id, "failed", now);
     }
     store.event(now, "warn", "send_failed", res.error ?? "", channel.id);
+  }
+
+  /**
+   * Growth mode: once a day each channel recommends one of the owner's other
+   * channels, preferring one on a similar topic. Channels grow mostly from
+   * outside links, and here the other channels are the outside.
+   */
+  private maybePromote(channel: ChannelConfig, now: number): void {
+    const { store } = this.d;
+    const day = dayKey(now, this.s.timezone);
+    const key = `promo:${channel.id}`;
+    if (store.get(key) === day) return;
+    const others = postingChannels(this.d.config.channels).filter((c) => c.id !== channel.id);
+    if (others.length === 0) return;
+    const sameGroup = others.filter((c) => c.group && c.group === channel.group);
+    const pool = sameGroup.length > 0 && hash32(`${day}:${channel.id}`) % 2 === 0 ? sameGroup : others;
+    const target = pool[hash32(`${channel.id}:${day}`) % pool.length];
+    if (!target) return;
+    store.set(key, day);
+    const lines = [
+      `💜 מכירים את *${target.name}*? אם אתם אוהבים את הערוץ הזה, תאהבו גם אותו 👇`,
+      `👀 טיפ: גם *${target.name}* שווה מעקב 👇`,
+      `🔥 עוד ערוץ שכדאי לכם: *${target.name}* 👇`,
+    ];
+    const text = `${lines[hash32(day + target.id) % lines.length]}\nhttps://whatsapp.com/channel/${target.invite}`;
+    const delay = (15 + this.rand() * 15) * MINUTE;
+    store.enqueue({ channelId: channel.id, payload: { kind: "text", text }, notBefore: now + delay, isFollowup: true, now });
   }
 
   /** Queues a call in the invasion channel pointing at `target`. Returns false when there is no usable invasion channel. */

@@ -181,7 +181,10 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
     return result;
   }
 
+  const growth = store.get("growth") === "1";
   const formats = { ...formatsFor(channel, settings) };
+  // polls get the most interaction of any post type, so growth mode leans on them
+  if (growth && formats.poll > 0) formats.poll = Math.round(formats.poll * 1.5 * 10) / 10;
   if (ctx.videoAvailable === false) {
     formats.image += formats.video;
     formats.video = 0;
@@ -202,6 +205,7 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
         .filter(Boolean),
       samples: store.styleSamples(channel.id, 8),
       sources,
+      growth,
     });
   } catch (err) {
     return failed(ctx, channel, now, result, err);
