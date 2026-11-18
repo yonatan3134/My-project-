@@ -252,3 +252,42 @@ test("growth mode: silent at night, one recommendation of another channel per ch
     for (const p of mine) assert.doesNotMatch(JSON.parse(p.payload).text, new RegExp(id === "a" ? "ערוץ a\\*" : "ערוץ b\\*"));
   }
 });
+
+test("special post: a fixed text every 3rd post, and an AI-written one every 4th", async () => {
+  const config = makeConfig([
+    { id: "fixed", mode: "creative", formats: { text: 1, poll: 0, image: 0, video: 0 }, special: { every: 3, text: "⭐ תעקבו ותזמינו חברים!" } },
+    { id: "ai", mode: "creative", formats: { text: 1, poll: 0, image: 0, video: 0 }, special: { every: 4, prompt: "חידה קשה במיוחד" } },
+  ]);
+  const sender = new ScriptedSender();
+  const { store } = await simulate({ config, days: 1, start: START, sender });
+  const posts = sentRows(store).filter((r) => !r.is_followup);
+  const fixed = posts.filter((r) => r.channel_id === "fixed").map((r) => JSON.parse(r.payload).text as string);
+  assert.ok(fixed.length >= 12);
+  fixed.forEach((t, i) => assert.equal(t === "⭐ תעקבו ותזמינו חברים!", i % 3 === 2, `post ${i + 1}: ${t}`));
+  const ai = store.db.prepare("SELECT special FROM queue WHERE channel_id = 'ai' AND status = 'sent' AND is_followup = 0 ORDER BY sent_at").all() as { special: number }[];
+  assert.ok(ai.length >= 12);
+  ai.forEach((r, i) => assert.equal(r.special, i % 4 === 3 ? 1 : 0, `ai post ${i + 1}`));
+});
+
+test("push: the channel's link goes out once in every other channel, not again within 12 hours", async () => {
+  const config = makeConfig([{ id: "a", mode: "creative" }, { id: "b", mode: "creative" }, { id: "c", mode: "fandom" }, { id: "inv", mode: "invasion" }]);
+  const store = new Store(":memory:");
+  for (const c of config.channels) store.updateChannel(c.id, { jid: `sim-${c.id}@newsletter`, role: "ADMIN", resolved_at: START });
+  store.updateChannel("c", { paused: 1 });
+  const sender = new ScriptedSender();
+  let clock = START + 10 * HOUR;
+  const scheduler = new Scheduler({ store, config, sender, media: stubMedia, now: () => clock, random: seededRandom(2), isConnected: () => true });
+  assert.equal(scheduler.pushChannel(config.channels[0]!, clock), 2, "b and the invasion channel; c is paused");
+  assert.match(String(scheduler.pushChannel(config.channels[0]!, clock + HOUR)), /12/);
+  for (const end = clock + 10 * MINUTE; clock < end; clock += 15_000) await scheduler.tick();
+  const pushes = sender.log.filter((s) => s.body.includes(config.channels[0]!.invite));
+  assert.deepEqual(pushes.map((p) => p.jid).sort(), ["sim-b@newsletter", "sim-inv@newsletter"]);
+  assert.match(pushes[0]!.body, /ערוץ מומלץ/);
+});
+
+test("a channel's own rhythm replaces the general one", async () => {
+  const config = makeConfig([{ id: "slow", mode: "creative", formats: { text: 1, poll: 0, image: 0, video: 0 }, cycle: { postsPerBurst: 1, intervalMinutes: 60, pauseMinutes: 180 } }]);
+  const { store } = await simulate({ config, days: 2, start: START });
+  const n = sentRows(store).filter((r) => !r.is_followup).length;
+  assert.ok(n >= 11 && n <= 13, `${n} posts in two days (expected about 12: one every 4 hours)`);
+});

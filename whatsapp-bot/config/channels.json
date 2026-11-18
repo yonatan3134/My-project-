@@ -99,21 +99,6 @@
     }
   },
   {
-    "id": "is-it-normal",
-    "name": "זה נורמאלי?🧐🤔",
-    "invite": "https://whatsapp.com/channel/0029Vb8nCQD2975Gmmn44Z1P",
-    "mode": "creative",
-    "topic": "שאלות 'זה נורמלי ש...?' על הרגלים יומיומיים מצחיקים, והעוקבים מצביעים.",
-    "rules": "רק הרגלים תמימים ומשעשעים מחיי היומיום. בלי נושאי גוף, בריאות, מיניות, או כל דבר שעלול לבייש מישהו.",
-    "group": "habits",
-    "formats": {
-      "text": 3,
-      "poll": 7,
-      "image": 0,
-      "video": 0
-    }
-  },
-  {
     "id": "brawl-il",
     "name": "Brawl-IL🔥",
     "invite": "https://whatsapp.com/channel/0029VbCaVvNBqbr0jtjNoz42",
@@ -172,16 +157,16 @@
     }
   },
   {
-    "id": "what-first",
-    "name": "מה יקרה קודם?",
-    "invite": "https://whatsapp.com/channel/0029VbCYMJk9RZAUpBnsDY20",
+    "id": "talks",
+    "name": "דיבורים בע\"מ🗒🤩",
+    "invite": "https://whatsapp.com/channel/0029Vb7SnzDI1rcoUV8kPR3s",
     "mode": "creative",
-    "topic": "סקרים משעשעים 'מה יקרה קודם': שני אירועים דמיוניים או יומיומיים, והעוקבים מנחשים מה יקרה ראשון.",
-    "rules": "לא על אירועים אמיתיים מהחדשות, פוליטיקה, מלחמות, אסונות או אנשים אמיתיים.",
+    "topic": "שאלות לדיון ושיחה: 'מה הייתם עושים אם...', דעות על דברים מחיי היומיום, שאלות היכרות מצחיקות, וויכוחים קלילים שכולם רוצים להגיב עליהם.",
+    "rules": "בלי פוליטיקה, דת או נושאים רגישים. שאלות פתוחות ונעימות שמתאימות לילדים ונוער.",
     "formats": {
-      "text": 2,
-      "poll": 8,
-      "image": 0,
+      "text": 5,
+      "poll": 4,
+      "image": 1,
       "video": 0
     }
   },
@@ -326,13 +311,13 @@
     }
   },
   {
-    "id": "brawl-stars",
-    "name": "Brawl Stars",
-    "invite": "https://whatsapp.com/channel/0029VbCjImB7j6g5H0vl0A2r",
+    "id": "prostars",
+    "name": "Prostars🧸",
+    "invite": "https://whatsapp.com/channel/0029Vb7oQLN8KMqpVEbSyj3Y",
     "mode": "fandom",
+    "group": "brawl",
     "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
     "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
-    "group": "brawl",
     "news": {
       "queries": [
         "בראול סטארס"
@@ -406,20 +391,6 @@
     }
   },
   {
-    "id": "steal-brainrot",
-    "name": "Steal a Brinrot",
-    "invite": "https://whatsapp.com/channel/0029Vb7SnzDI1rcoUV8kPR3s",
-    "mode": "fandom",
-    "topic": "המשחק Steal a Brainrot ברובלוקס: סקרי דעה, שאלות לשחקנים ועדכונים אמיתיים.",
-    "rules": "עדכונים וקודים רק מפריט מקור. אסור להמציא קודים.",
-    "news": {
-      "queries": [
-        "Steal a Brainrot Roblox"
-      ],
-      "feeds": []
-    }
-  },
-  {
     "id": "are-you-weird",
     "name": "האם אתה מוזר",
     "invite": "https://whatsapp.com/channel/0029VbDLRZx77qVQPj6qj12J",
@@ -449,6 +420,21 @@
     }
   },
   {
+    "id": "sticker-every-situation",
+    "name": "סטיקר לכל מצב💥",
+    "invite": "https://whatsapp.com/channel/0029VbDkfKv72WTsCAdoeW0y",
+    "mode": "creative",
+    "topic": "תמונות מצחיקות 'לכל מצב': רגעים מוכרים מהיומיום (כשהמורה אומרת מבחן פתע, כשאמא קוראת לאוכל באמצע משחק) עם תמונה מצוירת וכיתוב קצר שאפשר לשלוח לחברים.",
+    "rules": "כל פוסט הוא תמונה עם כיתוב קצר ומצחיק. בלי לעג לאנשים.",
+    "formats": {
+      "text": 1,
+      "poll": 0,
+      "image": 8,
+      "video": 1
+    },
+    "note": "הבוט שולח תמונות. סטיקרים של וואטסאפ עדיין לא נתמכים."
+  },
+  {
     "id": "little-bloom",
     "name": "בלום הקטנה-ספוילרים!✨👧",
     "invite": "https://whatsapp.com/channel/0029Vb897hXJ93wMHgPqWn35",
@@ -458,34 +444,6 @@
     "news": {
       "queries": [
         "בלום הקטנה"
-      ],
-      "feeds": []
-    }
-  },
-  {
-    "id": "kan-kids",
-    "name": "סדרות כאן חינוכית!📺",
-    "invite": "https://whatsapp.com/channel/0029VbCxhPt1t90aW7LExD0p",
-    "mode": "fandom",
-    "topic": "סדרות של כאן חינוכית: עדכונים אמיתיים וסקרי דעה לצופים.",
-    "rules": "פרטים על סדרות, פרקים ושחקנים רק מפריט מקור.",
-    "news": {
-      "queries": [
-        "כאן חינוכית סדרה"
-      ],
-      "feeds": []
-    }
-  },
-  {
-    "id": "world-cup",
-    "name": "עדכוני מונדיאל",
-    "invite": "https://whatsapp.com/channel/0029VbCgxk0Chq6TdjL8DW0Q",
-    "mode": "fandom",
-    "topic": "כדורגל עולמי והמונדיאל: עדכונים אמיתיים וסקרי דעה לאוהדים.",
-    "rules": "תוצאות, העברות ועובדות על שחקנים רק מפריט מקור.",
-    "news": {
-      "queries": [
-        "מונדיאל"
       ],
       "feeds": []
     }

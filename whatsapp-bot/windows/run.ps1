@@ -3,6 +3,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 $env:PANEL_PORT = '8080'
+$env:PANEL_HOST = '127.0.0.1'
 New-Item -ItemType Directory -Force (Join-Path $root 'data') | Out-Null
 $log = Join-Path $root 'data\bot.log'
 $flag = Join-Path $root 'data\stop'

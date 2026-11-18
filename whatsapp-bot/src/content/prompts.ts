@@ -76,6 +76,8 @@ export interface WriterRequest {
   sources: SourceItem[];
   /** growth mode: write for reactions, votes and forwards */
   growth?: boolean;
+  /** the owner's instruction for one special post */
+  special?: string;
 }
 
 function clip(s: string, max: number): string {
@@ -124,7 +126,11 @@ export function writerPrompt(req: WriterRequest): string {
       `Write up to ${total} posts. First, one "text" post for each source item that is clearly about this channel's topic. Fill the rest with posts that need no source, in roughly this mix: ${mix}.`,
     );
   } else {
-    parts.push(`Write ${total} posts in exactly this mix: ${mix}.`);
+    parts.push(
+      req.special
+        ? `SPECIAL POST. The channel owner asked for this post: "${req.special}". Write exactly 1 post of kind ${wanted[0]?.[0] ?? "text"} that follows the request, inside all the hard rules.`
+        : `Write ${total} posts in exactly this mix: ${mix}.`,
+    );
   }
   return parts.join("\n\n");
 }

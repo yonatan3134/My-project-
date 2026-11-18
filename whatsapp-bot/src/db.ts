@@ -36,6 +36,8 @@ export interface QueueRow {
   not_before: number;
   /** 1 = sent as soon as it is due instead of waiting for the channel's next slot (answers, invasion calls) */
   is_followup: number;
+  /** 1 = the owner's "every N posts" special post */
+  special: number;
   attempts: number;
   source_item_id: number | null;
   created_at: number;
@@ -192,6 +194,9 @@ export class Store {
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("busy_timeout = 5000");
     this.db.exec(SCHEMA);
+    // columns added after the first release
+    const cols = new Set((this.db.prepare("PRAGMA table_info(queue)").all() as { name: string }[]).map((c) => c.name));
+    if (!cols.has("special")) this.db.exec("ALTER TABLE queue ADD COLUMN special INTEGER NOT NULL DEFAULT 0");
   }
 
   close(): void {
@@ -242,12 +247,13 @@ export class Store {
     notBefore?: number;
     isFollowup?: boolean;
     sourceItemId?: number | null;
+    special?: boolean;
     now: number;
   }): number {
     const info = this.db
       .prepare(
-        `INSERT INTO queue (channel_id, grp, kind, payload, topic_key, norm_text, norm_hash, not_before, is_followup, source_item_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO queue (channel_id, grp, kind, payload, topic_key, norm_text, norm_hash, not_before, is_followup, source_item_id, special, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         row.channelId,
@@ -260,6 +266,7 @@ export class Store {
         row.notBefore ?? 0,
         row.isFollowup ? 1 : 0,
         row.sourceItemId ?? null,
+        row.special ? 1 : 0,
         row.now,
         row.now,
       );
@@ -268,19 +275,24 @@ export class Store {
 
   readyCount(channelId: string): number {
     const r = this.db
-      .prepare("SELECT COUNT(*) AS n FROM queue WHERE channel_id = ? AND status = 'ready' AND is_followup = 0")
+      .prepare("SELECT COUNT(*) AS n FROM queue WHERE channel_id = ? AND status = 'ready' AND is_followup = 0 AND special = 0")
       .get(channelId) as { n: number };
     return r.n;
   }
 
-  nextReady(channelId: string, now: number): QueueRow | null {
+  /** The next regular post (or, with special, the next special post) that may go out now. */
+  nextReady(channelId: string, now: number, special = false): QueueRow | null {
     const r = this.db
       .prepare(
         // posts based on a news item go first, while the news is still fresh
-        "SELECT * FROM queue WHERE channel_id = ? AND status = 'ready' AND is_followup = 0 AND not_before <= ? ORDER BY (source_item_id IS NULL), id LIMIT 1",
+        "SELECT * FROM queue WHERE channel_id = ? AND status = 'ready' AND is_followup = 0 AND special = ? AND not_before <= ? ORDER BY (source_item_id IS NULL), id LIMIT 1",
       )
-      .get(channelId, now) as RawQueueRow | undefined;
+      .get(channelId, special ? 1 : 0, now) as RawQueueRow | undefined;
     return r ? toQueueRow(r) : null;
+  }
+
+  readySpecialCount(channelId: string): number {
+    return (this.q("SELECT COUNT(*) AS n FROM queue WHERE channel_id = ? AND status = 'ready' AND special = 1").get(channelId) as { n: number }).n;
   }
 
   dueFollowups(now: number): QueueRow[] {

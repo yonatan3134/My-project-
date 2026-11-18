@@ -14,7 +14,7 @@ import { ffmpegAvailable } from "./media/video.js";
 import { AUTH_DIR, DB_PATH, TMP_DIR, ensureDirs } from "./paths.js";
 import { updateEnvFile } from "./panel/envfile.js";
 import { startPanel } from "./panel/server.js";
-import { Scheduler, postingChannels } from "./scheduler.js";
+import { Scheduler, dailyCap, postingChannels } from "./scheduler.js";
 import { HOUR, MINUTE, dayKey, sleep } from "./time.js";
 import { recentPostTexts, resolveChannels } from "./wa/channels.js";
 import { WaClient } from "./wa/client.js";
@@ -264,6 +264,7 @@ async function main(): Promise<void> {
             ownerPhone: env.ownerPhone ?? "",
             ntfyTopic: env.ntfyTopic ?? "",
             paused: scheduler.isPaused(),
+            defaultCycle: settings.cycle,
             growth: scheduler.growth(),
             hasClaude: env.hasAnthropicKey,
             models: llm instanceof FallbackLLM
@@ -282,6 +283,8 @@ async function main(): Promise<void> {
               return {
                 id: c.id, name: c.name, invite: c.invite, mode: c.mode, topic: c.topic, queries: c.news?.queries ?? [], enabled: c.enabled,
                 role: st.role, sentToday: perChannel.get(c.id) ?? 0, ready: store.readyCount(c.id), followers: f.count, followersWeek: f.week,
+                paused: st.paused === 1, maxPerDay: c.maxPerDay ?? null, cycle: c.cycle ?? null, special: c.special ?? null,
+                cap: dailyCap(c, settings, st.activated_at, now()),
               };
             }),
           };
@@ -325,6 +328,18 @@ async function main(): Promise<void> {
             const queries = Array.isArray(raw.queries) ? raw.queries.map(String).map((q) => q.trim()).filter(Boolean).slice(0, 5) : [];
             const mode = String(raw.mode ?? "creative") as ChannelConfig["mode"];
             const next: Record<string, unknown> = { ...(prev ?? {}), id, name, invite, mode, topic: String(raw.topic ?? "").trim(), enabled: raw.enabled !== false };
+            const num = (v: unknown) => (v === "" || v == null ? null : Number(v));
+            const max = num(raw.maxPerDay);
+            if (max && max > 0) next.maxPerDay = Math.round(max);
+            else delete next.maxPerDay;
+            const cyc = raw.cycle as Record<string, unknown> | null | undefined;
+            if (cyc && num(cyc.postsPerBurst) && num(cyc.intervalMinutes)) {
+              next.cycle = { postsPerBurst: num(cyc.postsPerBurst), intervalMinutes: num(cyc.intervalMinutes), pauseMinutes: num(cyc.pauseMinutes) ?? 0 };
+            } else delete next.cycle;
+            const sp = raw.special as Record<string, unknown> | null | undefined;
+            if (sp && num(sp.every) && (String(sp.text ?? "").trim() || String(sp.prompt ?? "").trim())) {
+              next.special = { every: num(sp.every), text: String(sp.text ?? "").trim(), prompt: String(sp.prompt ?? "").trim() };
+            } else delete next.special;
             if (queries.length > 0) next.news = { feeds: [], ...(prev?.news ?? {}), queries };
             else delete next.news;
             list.push(next as ChannelConfig);
@@ -374,6 +389,18 @@ async function main(): Promise<void> {
         },
         setPaused: (paused) => store.set("paused", paused ? "1" : "0"),
         setGrowth: (on) => store.set("growth", on ? "1" : "0"),
+        pauseChannel: (id, paused) => {
+          if (!config.channels.some((c) => c.id === id)) return "ערוץ לא קיים";
+          store.updateChannel(id, { paused: paused ? 1 : 0 });
+          return null;
+        },
+        push: (id, message) => {
+          const target = config.channels.find((c) => c.id === id);
+          if (!target) return "ערוץ לא קיים";
+          const r = scheduler.pushChannel(target, now(), message);
+          if (typeof r === "string") return r;
+          return r === 0 ? "אין ערוצים אחרים שהבוט מנהל בהם" : null;
+        },
         queue: (channelId) => store.readyList(channelId, 20).map((r) => ({ id: r.id, kind: r.kind, text: preview(r.payload) })),
         discard: (id) => (store.discardOne(id, now()) ? null : "הפוסט כבר לא בתור"),
       },
