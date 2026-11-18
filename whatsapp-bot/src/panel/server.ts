@@ -29,6 +29,8 @@ export interface PanelApi {
   startLink(): Promise<string | null>;
   setPaused(paused: boolean): void;
   setGrowth(on: boolean): void;
+  queue(channelId: string): unknown;
+  discard(id: number): string | null;
 }
 
 const MAX_BODY = 512 * 1024;
@@ -104,6 +106,7 @@ export function startPanel(api: PanelApi, port: number): http.Server {
       const url = new URL(req.url ?? "/", "http://panel");
       if (req.method === "GET" && url.pathname === "/") return send(res, 200, PAGE, "text/html; charset=utf-8");
       if (req.method === "GET" && url.pathname === "/api/state") return send(res, 200, api.state());
+      if (req.method === "GET" && url.pathname === "/api/queue") return send(res, 200, api.queue(url.searchParams.get("channel") ?? ""));
 
       if (req.method === "POST" && url.pathname.startsWith("/api/")) {
         // a custom header cannot be added by another website, so this blocks cross-site requests
@@ -127,6 +130,9 @@ export function startPanel(api: PanelApi, port: number): http.Server {
             break;
           case "/api/pause":
             api.setPaused(body.paused === true);
+            break;
+          case "/api/discard":
+            error = api.discard(Number(body.id));
             break;
           case "/api/growth":
             api.setGrowth(body.on === true);

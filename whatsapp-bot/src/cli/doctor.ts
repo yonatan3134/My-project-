@@ -21,9 +21,9 @@ const bad = (msg: string) => {
 };
 
 ensureDirs();
-const major = Number(process.versions.node.split(".")[0]);
-if (major >= 20) ok(`Node ${process.versions.node}`);
-else bad(`Node ${process.versions.node}: נדרשת גרסה 20 ומעלה`);
+const [major = 0, minor = 0] = process.versions.node.split(".").map(Number);
+if (major > 22 || (major === 22 && minor >= 13)) ok(`Node ${process.versions.node}`);
+else bad(`Node ${process.versions.node}: נדרשת גרסה 22.13 ומעלה`);
 
 let config: AppConfig | null = null;
 try {

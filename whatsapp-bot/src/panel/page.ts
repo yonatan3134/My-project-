@@ -30,13 +30,18 @@ export const PAGE = `<!doctype html>
   .code { font-size:38px; letter-spacing:6px; font-weight:800; direction:ltr; text-align:center; background:var(--bg); border-radius:14px; padding:14px; margin:10px 0; }
   .hint { color:var(--muted); font-size:14px; line-height:1.5; }
   .ch { border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px; }
-  .ch .top { display:flex; gap:8px; align-items:center; }
+  .ch .top { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .ch .top input[type=text] { flex:1; }
   .ch details { margin-top:6px; } .ch summary { cursor:pointer; color:var(--muted); font-size:14px; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; } @media (max-width:600px) { .grid2 { grid-template-columns:1fr; } }
   #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#1f1b2e; color:#fff; padding:12px 18px; border-radius:12px; display:none; z-index:9; }
   ul.events { margin:0; padding:0 18px 0 0; color:var(--muted); font-size:14px; }
   .ltr { direction:ltr; text-align:left; }
+  .post { border-bottom:1px solid var(--line); padding:9px 0; display:flex; gap:8px; align-items:flex-start; }
+  .post:last-child { border-bottom:0; }
+  .post .t { flex:1; white-space:pre-wrap; word-break:break-word; font-size:15px; }
+  .post small { color:var(--muted); display:block; }
+  .grow { font-size:12px; font-weight:700; } .grow.up { color:var(--ok); } .grow.down { color:var(--bad); }
 </style>
 </head>
 <body>
@@ -47,6 +52,18 @@ export const PAGE = `<!doctype html>
     <div class="row" id="stats"></div>
     <div class="row" style="margin-top:12px"><button id="pauseBtn" class="light"></button></div>
     <ul class="events" id="events" style="margin-top:12px"></ul>
+  </section>
+
+  <section class="card">
+    <h2>👀 הפוסטים הבאים</h2>
+    <p class="hint">מה הבוט עומד לפרסם. פוסט שלא מתאים, מוחקים לפני שהוא יוצא.</p>
+    <select id="qCh"></select>
+    <div id="queue" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card">
+    <h2>📤 פורסמו לאחרונה</h2>
+    <div id="recent"></div>
   </section>
 
   <section class="card">
@@ -116,11 +133,20 @@ function render() {
     ["פורסמו היום", s.today.sent],
     ["מחכים בתור", s.today.ready],
     ["ערוצים פעילים", s.activeChannels + "/" + s.postingChannels],
+    ["עוקבים בסך הכול", s.channels.reduce((a, c) => a + (c.followers || 0), 0).toLocaleString("he-IL")],
     ["קריאות AI היום", s.usage.calls],
   ].map(([t, v]) => '<div class="stat"><b>' + esc(v) + "</b><span>" + t + "</span></div>").join("");
   $("growthBtn").textContent = s.growth ? "✅ מצב צמיחה פועל · לכבות" : "🚀 להפעיל מצב צמיחה";
   $("growthBtn").className = s.growth ? "light" : "";
   $("pauseBtn").textContent = s.paused ? "▶️ להחזיר את הפרסומים" : "⏸ לעצור את כל הפרסומים";
+  $("recent").innerHTML = s.recent.length ? s.recent.map((r) =>
+    '<div class="post"><div class="t">' + esc(r.text) + "<small>" + esc(r.channel) + " · " + new Date(r.at).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" }) + "</small></div></div>").join("")
+    : '<p class="hint">עוד לא פורסם כלום.</p>';
+  const qSel = $("qCh"), keep = qSel.value;
+  const posting = s.channels.filter((c) => c.enabled && ["creative", "fandom", "news"].includes(c.mode));
+  qSel.innerHTML = posting.map((c) => '<option value="' + esc(c.id) + '">' + esc(c.name) + " (" + c.ready + ")</option>").join("");
+  if (keep && posting.some((c) => c.id === keep)) qSel.value = keep;
+  if (!loadQueue.loaded) { loadQueue.loaded = true; loadQueue(); }
   $("events").innerHTML = s.problems.map((p) => "<li>" + esc(p) + "</li>").join("");
   $("keyState").innerHTML = s.hasKey ? pill(true, "שמור") : pill(false, "חסר");
   $("pexelsState").innerHTML = s.hasPexels ? pill(true, "שמור") : "";
@@ -154,6 +180,8 @@ function renderChannels(list) {
     return '<div class="ch" data-i="' + i + '" data-id="' + esc(c.id || "") + '">' +
       '<div class="top"><input type="checkbox" class="en"' + (c.enabled ? " checked" : "") + ' title="פעיל" style="width:auto">' +
       '<input type="text" class="name" value="' + esc(c.name) + '" placeholder="שם הערוץ">' + status +
+      (c.followers != null ? '<span class="hint" title="עוקבים">👥 ' + c.followers.toLocaleString("he-IL") + "</span>" +
+        (c.followersWeek ? '<span class="grow ' + (c.followersWeek > 0 ? "up" : "down") + '">' + (c.followersWeek > 0 ? "+" : "") + c.followersWeek + " בשבוע</span>" : "") : "") +
       (c.sentToday ? '<span class="hint">' + c.sentToday + " היום</span>" : "") +
       '<button class="danger del" title="מחיקה">✕</button></div>' +
       '<details' + (c.id ? "" : " open") + '><summary>פרטים</summary>' +
@@ -202,6 +230,22 @@ $("saveSettings").onclick = async () => {
 $("growthBtn").onclick = async () => { try { await post("/api/growth", { on: !S.growth }); toast(S.growth ? "מצב צמיחה כבוי" : "מצב צמיחה הופעל 🚀"); load(); } catch (e) { toast(e.message); } };
 $("pauseBtn").onclick = async () => { try { await post("/api/pause", { paused: !S.paused }); load(); } catch (e) { toast(e.message); } };
 
+async function loadQueue() {
+  const id = $("qCh").value;
+  if (!id) { $("queue").innerHTML = ""; return; }
+  try {
+    const r = await fetch("/api/queue?channel=" + encodeURIComponent(id), { cache:"no-store" });
+    const list = await r.json();
+    $("queue").innerHTML = list.length ? list.map((p) =>
+      '<div class="post"><div class="t">' + esc(p.text) + '</div><button class="danger" data-id="' + p.id + '" title="למחוק">🗑</button></div>').join("")
+      : '<p class="hint">אין כרגע פוסטים בתור. הבוט כותב חדשים תוך כמה דקות.</p>';
+    document.querySelectorAll("#queue button[data-id]").forEach((b) => b.onclick = async () => {
+      try { await post("/api/discard", { id: Number(b.dataset.id) }); b.closest(".post").remove(); toast("נמחק"); } catch (e) { toast(e.message); }
+    });
+  } catch { $("queue").innerHTML = '<p class="hint">לא הצלחתי לטעון</p>'; }
+}
+$("qCh").onchange = loadQueue;
+
 async function load() {
   try {
     const r = await fetch("/api/state", { cache:"no-store" });
@@ -211,6 +255,7 @@ async function load() {
 }
 load();
 setInterval(() => { if (!editing || (S && (S.linking || S.pairingCode))) load(); }, 4000);
+setInterval(loadQueue, 30000);
 </script>
 </body>
 </html>`;

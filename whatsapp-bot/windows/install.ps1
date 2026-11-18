@@ -15,8 +15,9 @@ Step 'Checking Node.js'
 Refresh-Path
 $nodeOk = $false
 if (Get-Command node -ErrorAction SilentlyContinue) {
-  $major = [int](& node -p "process.versions.node.split('.')[0]")
-  if ($major -ge 22) { $nodeOk = $true }
+  # the bot uses Node's built-in SQLite: Node 22.13 or newer
+  $ok = (& node -p "const [a,b]=process.versions.node.split('.').map(Number); a>22||(a===22&&b>=13)?1:0")
+  if ($ok -eq '1') { $nodeOk = $true }
 }
 if (-not $nodeOk) {
   if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
@@ -24,6 +25,7 @@ if (-not $nodeOk) {
     Fail 'Node.js is missing. Install the LTS version from nodejs.org (opened in the browser), then run install.bat again.'
   }
   Write-Host 'Installing Node.js (if Windows asks for permission, click Yes)...'
+  winget upgrade --id OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements 2>$null | Out-Null
   winget install --id OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements | Out-Host
   Refresh-Path
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Fail 'Node.js did not install. Restart the computer and run install.bat again.' }

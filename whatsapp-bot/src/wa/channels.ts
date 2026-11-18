@@ -70,6 +70,7 @@ export async function resolveChannels(
         reports.push({ id: c.id, name: c.name, status: "not_found", detail: "the link did not lead to a channel" });
       } else {
         store.updateChannel(c.id, { jid: info.jid, live_name: info.name, role: info.role, resolved_at: now });
+        if (info.subscribers !== null) store.recordFollowers(c.id, new Date(now).toISOString().slice(0, 10), info.subscribers);
         reports.push({
           id: c.id,
           name: info.name || c.name,
