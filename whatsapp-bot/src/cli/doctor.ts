@@ -5,7 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { ApiError, GoogleGenAI } from "@google/genai";
+import { ApiError } from "@google/genai";
+import { discoverGeminiModels, geminiClient } from "../content/llm.js";
 import { aiKey, loadConfig, modelChain, type AppConfig } from "../config.js";
 import { collectItems, fetchSefariaChapter } from "../content/sources.js";
 import { renderCard } from "../media/cards.js";
@@ -52,7 +53,14 @@ if (config) {
       if (m.provider === "gemini") {
         if (!env.hasGeminiKey) { warn(`${label}: אין מפתח Gemini, מדלג`); continue; }
         try {
-          await new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "" }).models.get({ model: m.model });
+          const client = geminiClient(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "");
+          if (m.model === "auto") {
+            const found = await discoverGeminiModels(client);
+            if (found.length > 0) ok(`gemini:auto מצא ${found.length} מודלים: ${found.slice(0, 4).join(", ")}`);
+            else bad("gemini:auto: Google לא החזיר אף מודל טקסט זמין למפתח הזה");
+            continue;
+          }
+          await client.models.get({ model: m.model });
           ok(`${label} זמין`);
         } catch (err) {
           const status = err instanceof ApiError ? err.status : 0;

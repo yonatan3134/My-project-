@@ -91,9 +91,9 @@ const SettingsSchema = z.object({
     .object({
       enabled: z.boolean().default(true),
       maxPerDay: z.number().int().min(0).default(15),
-      models: z.array(z.string()).default(["gemini-2.5-flash-image", "gemini-3.1-flash-image-preview"]),
+      models: z.array(z.string()).default(["auto"]),
     })
-    .default({ enabled: true, maxPerDay: 15, models: ["gemini-2.5-flash-image", "gemini-3.1-flash-image-preview"] }),
+    .default({ enabled: true, maxPerDay: 15, models: ["auto"] }),
   effort: z.enum(["low", "medium", "high"]).default("medium"),
   /** "3 posts one hour apart, then a 2 hour pause" */
   cycle: z
