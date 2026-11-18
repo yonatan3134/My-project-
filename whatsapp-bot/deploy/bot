@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Short commands for running the bot on the server. Installed as /usr/local/bin/bot by deploy/setup.sh.
+set -euo pipefail
+DIR="__DIR__"
+SERVICE=whatsapp-bot
+RUN_AS=wabot
+
+if [ "$(id -u)" -ne 0 ]; then echo "צריך להריץ כ-root (או עם sudo)"; exit 1; fi
+
+as_bot() { (cd "$DIR" && sudo -u "$RUN_AS" -H env PATH="$PATH" "$@"); }
+
+# Commands that open their own WhatsApp connection must not run next to the service:
+# two connections with the same session throw each other out.
+exclusive() {
+  local was_active=0
+  if systemctl is-active --quiet "$SERVICE"; then was_active=1; systemctl stop "$SERVICE"; fi
+  local code=0
+  as_bot npm run --silent "$@" || code=$?
+  if [ "$was_active" -eq 1 ]; then systemctl start "$SERVICE"; echo "(הבוט הופעל מחדש)"; fi
+  return "$code"
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  link)     exclusive link ;;
+  check)    exclusive check ;;
+  test)     exclusive test-channel -- "$@" ;;
+  preview)  as_bot npm run --silent preview -- "$@" ;;
+  doctor)   as_bot npm run --silent doctor ;;
+  password) echo "סיסמה לאתר ההגדרות: $(cat "$DIR/data/panel-password")" ;;
+  simulate) as_bot npm run --silent simulate -- "$@" ;;
+  start|stop|restart) systemctl "$cmd" "$SERVICE"; echo "בוצע: $cmd" ;;
+  status)   systemctl status "$SERVICE" --no-pager | head -12 || true ;;
+  logs)     journalctl -u "$SERVICE" -n "${1:-60}" --no-pager -o cat | as_bot node dist/cli/pretty.js ;;
+  follow)   journalctl -u "$SERVICE" -f -o cat | as_bot node dist/cli/pretty.js ;;
+  env)      as_bot nano .env ;;
+  channels) as_bot nano config/channels.json ;;
+  settings) as_bot nano config/settings.json ;;
+  update)
+    as_bot git pull --ff-only
+    as_bot npm ci
+    as_bot npm run build
+    systemctl restart "$SERVICE"
+    echo "עודכן והופעל מחדש" ;;
+  *)
+    cat <<'HELP'
+פקודות:
+  bot password        הסיסמה לאתר ההגדרות
+  bot doctor          בודק שהכול מותקן ומוגדר
+  bot link            מחבר את הבוט לוואטסאפ (פעם אחת, ושוב אם הוא התנתק)
+  bot check           בודק שהבוט מנהל בכל הערוצים
+  bot preview <ערוץ>  מראה פוסטים לדוגמה בלי לשלוח
+  bot test <ערוץ>     שולח 4 פוסטים לבדיקה לערוץ אחד
+  bot start | stop | restart | status
+  bot logs [מספר שורות] | bot follow
+  bot env | bot channels | bot settings    עריכת קובצי ההגדרות
+  bot simulate [ימים] מראה את לוח הזמנים הצפוי
+  bot update          מושך גרסה חדשה מ-GitHub ומפעיל מחדש
+HELP
+    ;;
+esac

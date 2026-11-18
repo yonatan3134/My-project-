@@ -1,0 +1,58 @@
+{
+  "timezone": "Asia/Jerusalem",
+  "provider": "gemini",
+  "model": "gemini-flash-lite-latest",
+  "cycle": {
+    "postsPerBurst": 3,
+    "intervalMinutes": 60,
+    "pauseMinutes": 120
+  },
+  "fandomMaxPerDay": 6,
+  "newsMaxPerDay": 4,
+  "warmup": [
+    {
+      "days": 7,
+      "maxPerDay": 4
+    },
+    {
+      "days": 7,
+      "maxPerDay": 8
+    }
+  ],
+  "rollout": [
+    {
+      "days": 3,
+      "channels": 5
+    },
+    {
+      "days": 4,
+      "channels": 15
+    }
+  ],
+  "send": {
+    "minGapSeconds": 20,
+    "maxGapSeconds": 45,
+    "graceMinutes": 20
+  },
+  "buffer": {
+    "min": 4,
+    "batch": 8
+  },
+  "followupDelayMinutes": [
+    25,
+    40
+  ],
+  "invasion": {
+    "maxPerDay": 2,
+    "emojis": [
+      "🔥",
+      "😈",
+      "💫",
+      "👑",
+      "⚡",
+      "💜"
+    ]
+  },
+  "quietHours": null,
+  "dailyReportHour": 20
+}

@@ -1,0 +1,41 @@
+{
+  "name": "whatsapp-channels-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "24/7 content bot for WhatsApp Channels",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "link": "node dist/cli/link.js",
+    "check": "node dist/cli/check.js",
+    "test-channel": "node dist/cli/test-channel.js",
+    "preview": "node dist/cli/preview.js",
+    "doctor": "node dist/cli/doctor.js",
+    "simulate": "node dist/cli/simulate.js",
+    "test": "node --import tsx --test src/tests/*.test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@google/genai": "^3.3.0",
+    "baileys": "7.0.0-rc14",
+    "better-sqlite3": "^13.1.1",
+    "dotenv": "^18.0.10",
+    "fast-xml-parser": "^5.12.0",
+    "pino": "^10.4.0",
+    "qrcode-terminal": "^0.12.0",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.0.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,536 @@
+[
+  {
+    "id": "riddles",
+    "name": "חידות🤔",
+    "invite": "https://whatsapp.com/channel/0029VbBlj916mYPKFxLFtv3k",
+    "mode": "creative",
+    "topic": "חידות היגיון, חידות מילים וחידות חשבון קצרות. התשובה מתפרסמת אחר כך בהודעה נפרדת.",
+    "group": "riddles",
+    "formats": {
+      "text": 7,
+      "poll": 1,
+      "image": 2,
+      "video": 1
+    }
+  },
+  {
+    "id": "would-you-rather",
+    "name": "מה אתה מעדיף ❓",
+    "invite": "https://whatsapp.com/channel/0029Vb8Nd8jFCCoPAWLjFt2q",
+    "mode": "creative",
+    "topic": "דילמות 'מה אתה מעדיף' משעשעות עם שתי אפשרויות, והעוקבים מצביעים.",
+    "formats": {
+      "text": 1,
+      "poll": 8,
+      "image": 2,
+      "video": 1
+    }
+  },
+  {
+    "id": "brawl-jokes-polls",
+    "name": "בדיחות וסקרים בע״מ של בראול סטארס🤣📊",
+    "invite": "https://whatsapp.com/channel/0029VbB5dVL3LdQXss7PEo0E",
+    "mode": "creative",
+    "topic": "בדיחות קלילות וסקרי דעה על בראול סטארס.",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl-fun",
+    "formats": {
+      "text": 4,
+      "poll": 5,
+      "image": 1,
+      "video": 0
+    }
+  },
+  {
+    "id": "daily-motivation",
+    "name": "מוטיבציה יומיומית!🕊️",
+    "invite": "https://whatsapp.com/channel/0029VbBnLky4SpkQNfNgZX1W",
+    "mode": "creative",
+    "topic": "משפטי מוטיבציה והשראה קצרים ומקוריים לבני נוער.",
+    "rules": "משפטים מקוריים בלבד. לא לייחס ציטוט לאף אדם.",
+    "formats": {
+      "text": 5,
+      "poll": 0,
+      "image": 4,
+      "video": 2
+    }
+  },
+  {
+    "id": "brawl-polls",
+    "name": "סקרים על בראול סטארס",
+    "invite": "https://whatsapp.com/channel/0029VbBeU9N05MUioMimkJ3c",
+    "mode": "creative",
+    "topic": "סקרי דעה על בראול סטארס: מה עדיף, מי הכי אהוב, איך אתם משחקים.",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl-fun",
+    "formats": {
+      "text": 1,
+      "poll": 9,
+      "image": 0,
+      "video": 0
+    }
+  },
+  {
+    "id": "stickers-jokes",
+    "name": "סטיקרים ובדיחות!😂🤣",
+    "invite": "https://whatsapp.com/channel/0029VbBvVspL2AU0eZHumN0u",
+    "mode": "creative",
+    "topic": "בדיחות קצרות ונקיות: בדיחות קרש, בדיחות אבא, משחקי מילים.",
+    "group": "jokes",
+    "formats": {
+      "text": 7,
+      "poll": 0,
+      "image": 3,
+      "video": 0
+    },
+    "note": "הבוט שולח בדיחות (טקסט ותמונות). סטיקרים עדיין לא נתמכים."
+  },
+  {
+    "id": "worth-more",
+    "name": "מה יותר שווה?(חידות וסקרים)😈🤷‍♂️",
+    "invite": "https://whatsapp.com/channel/0029Vb8xHs4HLHQf8lJrZ02J",
+    "mode": "creative",
+    "topic": "דילמות 'מה יותר שווה' עם שתי אפשרויות שהעוקבים בוחרים ביניהן, ומדי פעם חידה.",
+    "formats": {
+      "text": 2,
+      "poll": 7,
+      "image": 1,
+      "video": 0
+    }
+  },
+  {
+    "id": "is-it-normal",
+    "name": "זה נורמאלי?🧐🤔",
+    "invite": "https://whatsapp.com/channel/0029Vb8nCQD2975Gmmn44Z1P",
+    "mode": "creative",
+    "topic": "שאלות 'זה נורמלי ש...?' על הרגלים יומיומיים מצחיקים, והעוקבים מצביעים.",
+    "rules": "רק הרגלים תמימים ומשעשעים מחיי היומיום. בלי נושאי גוף, בריאות, מיניות, או כל דבר שעלול לבייש מישהו.",
+    "group": "habits",
+    "formats": {
+      "text": 3,
+      "poll": 7,
+      "image": 0,
+      "video": 0
+    }
+  },
+  {
+    "id": "brawl-il",
+    "name": "Brawl-IL🔥",
+    "invite": "https://whatsapp.com/channel/0029VbCaVvNBqbr0jtjNoz42",
+    "mode": "fandom",
+    "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "big-brother",
+    "name": "האח-הגדול!🧿",
+    "invite": "https://whatsapp.com/channel/0029VbCKNfU4Y9lnc4afb81P",
+    "mode": "fandom",
+    "topic": "תוכנית הטלוויזיה האח הגדול: עדכונים אמיתיים וסקרי דעה לצופים.",
+    "rules": "עדכונים על התוכנית ועל הדיירים רק מפריט מקור. בלי רכילות פוגענית ובלי לעג לדיירים.",
+    "news": {
+      "queries": [
+        "האח הגדול"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "guess-price",
+    "name": "נחש את המחיר",
+    "invite": "https://whatsapp.com/channel/0029VbDkHne4SpkPcl0r3E1y",
+    "mode": "creative",
+    "topic": "מציגים מוצר כללי ומוכר והעוקבים מנחשים כמה הוא עולה בשקלים, בסקר עם טווחי מחירים. התשובה מתפרסמת אחר כך.",
+    "rules": "רק מוצרים כלליים (לא מותג מסוים, לא חנות מסוימת). בערוץ הזה מותר לתת בתשובה הערכת מחיר, ותמיד בניסוח של הערכה ('בערך', 'בסביבות'). בלי אלכוהול, טבק או הימורים.",
+    "formats": {
+      "text": 2,
+      "poll": 7,
+      "image": 1,
+      "video": 0
+    }
+  },
+  {
+    "id": "daily-detective",
+    "name": "🕵️‍♂️ הבלש היומי | חידות ותעלומות",
+    "invite": "https://whatsapp.com/channel/0029Vb99nId84OmIYAGrNW2i",
+    "mode": "creative",
+    "topic": "תעלומות בלשיות קצרות: סיפור קצר עם רמזים שהעוקבים מנסים לפתור. הפתרון מתפרסם אחר כך.",
+    "rules": "תעלומות עדינות בלבד (חפץ שנעלם, מי אכל את העוגה). בלי רצח, דם או אלימות.",
+    "group": "riddles",
+    "formats": {
+      "text": 8,
+      "poll": 1,
+      "image": 1,
+      "video": 0
+    }
+  },
+  {
+    "id": "what-first",
+    "name": "מה יקרה קודם?",
+    "invite": "https://whatsapp.com/channel/0029VbCYMJk9RZAUpBnsDY20",
+    "mode": "creative",
+    "topic": "סקרים משעשעים 'מה יקרה קודם': שני אירועים דמיוניים או יומיומיים, והעוקבים מנחשים מה יקרה ראשון.",
+    "rules": "לא על אירועים אמיתיים מהחדשות, פוליטיקה, מלחמות, אסונות או אנשים אמיתיים.",
+    "formats": {
+      "text": 2,
+      "poll": 8,
+      "image": 0,
+      "video": 0
+    }
+  },
+  {
+    "id": "brawl-pro-1",
+    "name": "🔥Brawl Stars Pro💫 (ערוץ 1)",
+    "invite": "https://whatsapp.com/channel/0029Vb7gK8H0lwgti1WI7d0Q",
+    "mode": "fandom",
+    "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "zikui-harabim",
+    "name": "זיכוי הרבים!📖🕯️",
+    "invite": "https://whatsapp.com/channel/0029Vb79xzw5kg78CHaKVG3i",
+    "mode": "creative",
+    "topic": "מסרים קצרים של חיזוק: מידות טובות, הכרת הטוב, אהבת חינם, כיבוד הורים.",
+    "rules": "בלי פסיקת הלכה. בלי ציטוטים מהמקורות או מרבנים (אלה מגיעים רק מהמאגר). בלי פוליטיקה ובלי ביקורת על אורח החיים של אחרים.",
+    "formats": {
+      "text": 6,
+      "poll": 0,
+      "image": 3,
+      "video": 0
+    },
+    "maxPerDay": 6,
+    "sefaria": {
+      "book": "Pirkei_Avot",
+      "chapters": 6,
+      "perDay": 1
+    }
+  },
+  {
+    "id": "brawl-ball",
+    "name": "Brawl Ball ⚽️",
+    "invite": "https://whatsapp.com/channel/0029VbDL01iCMY0Jq904sF1G",
+    "mode": "fandom",
+    "topic": "בראול סטארס, בדגש על מצב המשחק Brawl Ball: סקרי דעה, שאלות למעריצים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "brawl-pro-2",
+    "name": "🔥Brawl Stars Pro💫 (ערוץ 2)",
+    "invite": "https://whatsapp.com/channel/0029Vb7BGUd6hENw6KB5xL14",
+    "mode": "fandom",
+    "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "brawl-pro-3",
+    "name": "🔥Brawl Stars Pro💫 (ערוץ 3)",
+    "invite": "https://whatsapp.com/channel/0029Vb7kSbJ2phHHObKDFV1g",
+    "mode": "fandom",
+    "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "brawl-pro-4",
+    "name": "🔥Brawl Stars Pro💫 (ערוץ 4)",
+    "invite": "https://whatsapp.com/channel/0029VbBYgn46xCSMPLpHTs1z",
+    "mode": "fandom",
+    "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "brawl-stars-il",
+    "name": "בראול סטארס il",
+    "invite": "https://whatsapp.com/channel/0029VbD20YCJJhzc29HHlQ46",
+    "mode": "fandom",
+    "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "brawl-fun",
+    "name": "Brawl-fun🔥",
+    "invite": "https://whatsapp.com/channel/0029Vb7Slni8aKvRa6kjJe2q",
+    "mode": "creative",
+    "topic": "תוכן כיפי על בראול סטארס: בדיחות, 'מה אתה מעדיף' וסקרים.",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl-fun",
+    "formats": {
+      "text": 4,
+      "poll": 5,
+      "image": 1,
+      "video": 0
+    }
+  },
+  {
+    "id": "brawl-stars-sparkle",
+    "name": "Brawl stars!✨",
+    "invite": "https://whatsapp.com/channel/0029VbCqYwqISTkHlwntpL3C",
+    "mode": "fandom",
+    "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "brawl-stars",
+    "name": "Brawl Stars",
+    "invite": "https://whatsapp.com/channel/0029VbCjImB7j6g5H0vl0A2r",
+    "mode": "fandom",
+    "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "brawl-free-passes",
+    "name": "בראול פאסים בחינם",
+    "invite": "https://whatsapp.com/channel/0029VbCwPmYFnSzFFYY5JS0D",
+    "mode": "news",
+    "topic": "מתנות ואירועים רשמיים בבראול סטארס.",
+    "rules": "מפרסמים רק מתנה, אירוע או קוד רשמיים של Supercell שמופיעים במפורש בפריט מקור. אם הפריט לא עוסק במתנה רשמית כזאת, מדלגים עליו. אסור להבטיח פאסים, ג'מים או פרסים שלא מופיעים במקור.",
+    "group": "brawl-free",
+    "maxPerDay": 3,
+    "news": {
+      "queries": [
+        "בראול סטארס מתנה חינם",
+        "Brawl Stars free reward"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "brawl-free-stuff",
+    "name": "דברים בחינם בבראול",
+    "invite": "https://whatsapp.com/channel/0029Vb8GsX86WaKkhSue7s0i",
+    "mode": "news",
+    "topic": "מתנות ואירועים רשמיים בבראול סטארס.",
+    "rules": "מפרסמים רק מתנה, אירוע או קוד רשמיים של Supercell שמופיעים במפורש בפריט מקור. אם הפריט לא עוסק במתנה רשמית כזאת, מדלגים עליו. אסור להבטיח פאסים, ג'מים או פרסים שלא מופיעים במקור.",
+    "group": "brawl-free",
+    "maxPerDay": 3,
+    "news": {
+      "queries": [
+        "בראול סטארס מתנה חינם",
+        "Brawl Stars free reward"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "brawl-free-prizes",
+    "name": "Free prizes in Brawl Stars",
+    "invite": "https://whatsapp.com/channel/0029VbB6iVcAYlUAfjOwZ72E",
+    "mode": "news",
+    "topic": "מתנות ואירועים רשמיים בבראול סטארס.",
+    "rules": "מפרסמים רק מתנה, אירוע או קוד רשמיים של Supercell שמופיעים במפורש בפריט מקור. אם הפריט לא עוסק במתנה רשמית כזאת, מדלגים עליו. אסור להבטיח פאסים, ג'מים או פרסים שלא מופיעים במקור.",
+    "group": "brawl-free",
+    "maxPerDay": 3,
+    "news": {
+      "queries": [
+        "בראול סטארס מתנה חינם",
+        "Brawl Stars free reward"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "lucky-block",
+    "name": "Be a Lucky Block",
+    "invite": "https://whatsapp.com/channel/0029Vb7aylc0LKZDmj46j130",
+    "mode": "fandom",
+    "topic": "המשחק Be a Lucky Block ברובלוקס: סקרי דעה, שאלות לשחקנים ועדכונים אמיתיים.",
+    "rules": "עדכונים וקודים רק מפריט מקור. אסור להמציא קודים.",
+    "news": {
+      "queries": [
+        "Be a Lucky Block Roblox"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "steal-brainrot",
+    "name": "Steal a Brinrot",
+    "invite": "https://whatsapp.com/channel/0029Vb7SnzDI1rcoUV8kPR3s",
+    "mode": "fandom",
+    "topic": "המשחק Steal a Brainrot ברובלוקס: סקרי דעה, שאלות לשחקנים ועדכונים אמיתיים.",
+    "rules": "עדכונים וקודים רק מפריט מקור. אסור להמציא קודים.",
+    "news": {
+      "queries": [
+        "Steal a Brainrot Roblox"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "are-you-weird",
+    "name": "האם אתה מוזר",
+    "invite": "https://whatsapp.com/channel/0029VbDLRZx77qVQPj6qj12J",
+    "mode": "creative",
+    "topic": "שאלות משעשעות שבודקות אם העוקבים 'מוזרים': הרגלים מצחיקים שהעוקבים מצביעים עליהם.",
+    "rules": "רק הרגלים תמימים ומשעשעים מחיי היומיום. בלי נושאי גוף, בריאות, מיניות, או כל דבר שעלול לבייש מישהו.",
+    "group": "habits",
+    "formats": {
+      "text": 3,
+      "poll": 7,
+      "image": 0,
+      "video": 0
+    }
+  },
+  {
+    "id": "sweet-laugh",
+    "name": "צחוק😂-מתוק🍭(חוזר!)",
+    "invite": "https://whatsapp.com/channel/0029VbC6EmxCRs1xEZIwPA1Z",
+    "mode": "creative",
+    "topic": "בדיחות קצרות ונקיות ורגעים מצחיקים מחיי היומיום של ילדים ונוער.",
+    "group": "jokes",
+    "formats": {
+      "text": 7,
+      "poll": 1,
+      "image": 2,
+      "video": 0
+    }
+  },
+  {
+    "id": "little-bloom",
+    "name": "בלום הקטנה-ספוילרים!✨👧",
+    "invite": "https://whatsapp.com/channel/0029Vb897hXJ93wMHgPqWn35",
+    "mode": "fandom",
+    "topic": "הסדרה בלום הקטנה: עדכונים אמיתיים וסקרי דעה לצופים.",
+    "rules": "ספוילרים ופרטי עלילה רק מפריט מקור. אסור להמציא עלילה.",
+    "news": {
+      "queries": [
+        "בלום הקטנה"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "kan-kids",
+    "name": "סדרות כאן חינוכית!📺",
+    "invite": "https://whatsapp.com/channel/0029VbCxhPt1t90aW7LExD0p",
+    "mode": "fandom",
+    "topic": "סדרות של כאן חינוכית: עדכונים אמיתיים וסקרי דעה לצופים.",
+    "rules": "פרטים על סדרות, פרקים ושחקנים רק מפריט מקור.",
+    "news": {
+      "queries": [
+        "כאן חינוכית סדרה"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "world-cup",
+    "name": "עדכוני מונדיאל",
+    "invite": "https://whatsapp.com/channel/0029VbCgxk0Chq6TdjL8DW0Q",
+    "mode": "fandom",
+    "topic": "כדורגל עולמי והמונדיאל: עדכונים אמיתיים וסקרי דעה לאוהדים.",
+    "rules": "תוצאות, העברות ועובדות על שחקנים רק מפריט מקור.",
+    "news": {
+      "queries": [
+        "מונדיאל"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "de-cohen",
+    "name": "ערוץ מעריצים לדה כהן🔥",
+    "invite": "https://whatsapp.com/channel/0029VbCJ43yAInPojIsfhl23",
+    "mode": "fandom",
+    "topic": "ערוץ מעריצים של היוצר דה כהן: עדכונים אמיתיים ושאלות דעה למעריצים.",
+    "rules": "שום דבר על החיים הפרטיים שלו. עובדות עליו רק מפריט מקור.",
+    "news": {
+      "queries": [
+        "דה כהן"
+      ],
+      "feeds": []
+    }
+  },
+  {
+    "id": "earn-from-zero",
+    "name": "מכניסים מאפס💰",
+    "invite": "https://whatsapp.com/channel/0029Vb8uxROB4hdW6cGPoB0v",
+    "mode": "creative",
+    "topic": "טיפים כלליים לבני נוער על כסף: חיסכון, עבודות קטנות שמתאימות לגיל צעיר, מכירת דברים משומשים, פיתוח כישורים.",
+    "rules": "בלי הבטחות לרווח. בלי השקעות, קריפטו, מסחר, הימורים או 'שיטות' להתעשר. בלי שמות של אפליקציות או אתרים. כשמדובר בכסף או במכירה, להזכיר לשתף את ההורים.",
+    "formats": {
+      "text": 6,
+      "poll": 2,
+      "image": 2,
+      "video": 0
+    },
+    "maxPerDay": 6
+  },
+  {
+    "id": "invasion",
+    "name": "פלישה לערוצים😈",
+    "invite": "https://whatsapp.com/channel/0029Vb7wdsK7IUYSgjLVu521",
+    "mode": "invasion",
+    "note": "הבוט מפרסם כאן קריאה לפלישה כשעולה סקר באחד הערוצים, או כשאתה שולח לו: פלישה <ערוץ>"
+  },
+  {
+    "id": "ai-images",
+    "name": "תמונות Ai💫",
+    "invite": "https://whatsapp.com/channel/0029Vb7Esrj0AgWHhIRkns0A",
+    "mode": "off",
+    "note": "כבוי: דורש שירות ליצירת תמונות AI, שלא כלול בגרסה הזו."
+  }
+]
