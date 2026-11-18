@@ -1,0 +1,32 @@
+{
+  "name": "המחברת של יונתן",
+  "short_name": "המחברת",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070b18",
+  "theme_color": "#3d6bff",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "id": "./?app=yonatan",
+  "description": "שיעורי בית, אנגלית, מתמטיקה, פייתון ופוקוס, עם XP ורצפים. עובד בלי אינטרנט.",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ]
+}
