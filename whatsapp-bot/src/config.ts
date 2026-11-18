@@ -258,10 +258,65 @@ export function aiKey(config: Pick<AppConfig, "settings" | "env">): { name: stri
 export function loadConfig(dir: string = CONFIG_DIR): AppConfig {
   const settingsFile = path.join(dir, "settings.json");
   const settingsRaw = fs.existsSync(settingsFile) ? readJson(settingsFile) : {};
-  // channels edited on the settings website are kept with the bot's data, so updates from GitHub never overwrite them
-  const edited = path.join(DATA_DIR, "channels.json");
-  const channelsRaw = readJson(dir === CONFIG_DIR && fs.existsSync(edited) ? edited : path.join(dir, "channels.json"));
+  const shipped = readJson(path.join(dir, "channels.json"));
+  let channelsRaw: unknown = shipped;
+  // channels edited on the settings website are kept with the bot's data; a new built-in list from an update is merged in
+  if (dir === CONFIG_DIR && fs.existsSync(EDITED_CHANNELS_FILE)) {
+    const edited = readJson(EDITED_CHANNELS_FILE) as Raw[];
+    // saved by a version that did not keep the base: treat the saved list as the old built-in one,
+    // so the new built-in list applies in full and only the per-channel edits carry over
+    const base = fs.existsSync(BASE_CHANNELS_FILE) ? (readJson(BASE_CHANNELS_FILE) as Raw[]) : edited;
+    channelsRaw = mergeChannelLists(shipped as Raw[], edited, base);
+  }
   return { ...parseConfig(settingsRaw, channelsRaw), env: loadEnv() };
+}
+
+type Raw = Record<string, unknown> & { invite?: string };
+const code = (c: Raw) => inviteCode(String(c.invite ?? ""));
+
+/**
+ * Combines the built-in channel list with the owner's edits.
+ * - a channel in the built-in list keeps the owner's edited version when there is one
+ * - a channel the owner added on the website stays
+ * - a channel that was in the built-in list the owner last saved against, and is gone from the new one, is removed
+ * - a channel the owner deleted on the website stays deleted
+ */
+export function mergeChannelLists(shipped: Raw[], edited: Raw[], base: Raw[]): Raw[] {
+  const editedBy = new Map(edited.map((c) => [code(c), c]));
+  const baseSet = new Set(base.map(code));
+  const out: Raw[] = [];
+  const used = new Set<string>();
+  for (const c of shipped) {
+    const k = code(c);
+    const e = editedBy.get(k);
+    if (e) out.push(e);
+    else if (baseSet.has(k)) continue; // was there when the owner saved, and the owner removed it
+    else out.push(c); // new in this version
+    used.add(k);
+  }
+  for (const e of edited) {
+    const k = code(e);
+    if (used.has(k)) continue;
+    if (baseSet.has(k)) continue; // came from an older built-in list that no longer has it
+    out.push(e); // added by the owner
+    used.add(k);
+  }
+  // keep ids unique when an added channel clashes with a new built-in one
+  const ids = new Set<string>();
+  return out.map((c) => {
+    let id = String(c.id ?? "");
+    while (ids.has(id)) id = `${id}-2`;
+    ids.add(id);
+    return id === c.id ? c : { ...c, id };
+  });
+}
+
+/** The built-in list as it was when the owner last saved, so later updates can tell additions from removals. */
+export const BASE_CHANNELS_FILE = path.join(DATA_DIR, "channels.base.json");
+
+export function saveEditedChannels(list: unknown[], dir: string = CONFIG_DIR): void {
+  fs.writeFileSync(EDITED_CHANNELS_FILE, JSON.stringify(list, null, 2));
+  fs.writeFileSync(BASE_CHANNELS_FILE, fs.readFileSync(path.join(dir, "channels.json")));
 }
 
 export function formatsFor(channel: ChannelConfig, settings: Settings): Formats {

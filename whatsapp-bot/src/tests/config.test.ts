@@ -34,3 +34,19 @@ test("mistakes in the channel file are reported clearly", () => {
   assert.throws(() => parseConfig({}, [{ ...base, id: "Bad Id" }]));
   assert.throws(() => parseConfig({}, [{ ...base, id: "a", mode: "whatever" }]));
 });
+
+import { mergeChannelLists } from "../config.js";
+
+test("a new built-in channel list from an update merges with the owner's edits", () => {
+  const ch = (id: string, code: string, extra: Record<string, unknown> = {}) => ({ id, invite: `0029V${code.padEnd(17, "x")}`, ...extra });
+  const base = [ch("a", "a"), ch("b", "b"), ch("c", "c")]; // built-in list when the owner saved
+  const edited = [ch("a", "a", { topic: "my edit" }), ch("c", "c"), ch("mine", "m")]; // owner edited a, deleted b, added mine
+  const shipped = [ch("a", "a"), ch("b", "b"), ch("d", "d")]; // new version: c removed, d added
+  const out = mergeChannelLists(shipped, edited, base);
+  assert.deepEqual(out.map((c) => c.id), ["a", "d", "mine"]);
+  assert.equal(out[0]!.topic, "my edit");
+  // saved by an older version (no base): the new built-in list applies, keeping the edits of channels in it
+  const old = mergeChannelLists(shipped, edited, edited);
+  assert.deepEqual(old.map((c) => c.id), ["a", "b", "d"]);
+  assert.equal(old[0]!.topic, "my edit");
+});
