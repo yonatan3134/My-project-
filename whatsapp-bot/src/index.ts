@@ -34,9 +34,13 @@ function clearSession(): void {
   fsSync.mkdirSync(AUTH_DIR, { recursive: true });
 }
 
-/** systemd starts the bot again a few seconds after it exits, with the new settings. */
+/**
+ * Shuts down cleanly; the supervisor (systemd on Linux, run.ps1 on Windows)
+ * starts the bot again a few seconds later with the new settings. Emitting the
+ * signal event instead of sending a signal works the same on Windows.
+ */
 function restartSoon(): void {
-  setTimeout(() => process.kill(process.pid, "SIGTERM"), 700);
+  setTimeout(() => (process as NodeJS.EventEmitter).emit("SIGTERM"), 700);
 }
 
 async function main(): Promise<void> {

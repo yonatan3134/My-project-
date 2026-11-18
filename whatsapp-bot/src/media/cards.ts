@@ -2,7 +2,7 @@ import sharp, { type OverlayOptions, type Sharp } from "sharp";
 import { hash32 } from "../time.js";
 
 export const CARD_SIZE = 1080;
-const FONT = "Noto Sans Hebrew, Rubik, Heebo, DejaVu Sans, sans-serif";
+const FONT = "Noto Sans Hebrew, Rubik, Heebo, DejaVu Sans, Segoe UI, Arial, Segoe UI Emoji, sans-serif";
 
 /** Gradient pairs chosen to keep white text readable. */
 const THEMES: [string, string][] = [
