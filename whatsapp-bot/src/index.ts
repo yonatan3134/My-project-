@@ -2,7 +2,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { WAMessage } from "baileys";
-import { aiKey, modelChain, EDITED_CHANNELS_FILE, inviteCode, loadConfig, parseConfig, type ChannelConfig } from "./config.js";
+import { aiKey, modelChain, saveEditedChannels, inviteCode, loadConfig, parseConfig, type ChannelConfig } from "./config.js";
 import { refillChannel, type GenContext } from "./content/generator.js";
 import { createLLM, FakeLLM, FallbackLLM, type LLM } from "./content/llm.js";
 import { AiImages } from "./media/aiimage.js";
@@ -349,7 +349,7 @@ async function main(): Promise<void> {
           } catch (err) {
             return `ההגדרות לא תקינות: ${(err as Error).message.slice(0, 200)}`;
           }
-          fsSync.writeFileSync(EDITED_CHANNELS_FILE, JSON.stringify(list, null, 2));
+          saveEditedChannels(list);
           restartSoon();
           return null;
         },
