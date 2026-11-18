@@ -51,3 +51,42 @@ test("a waiting post can be thrown away once; it then counts as used", () => {
   assert.equal(store.readyList("a", 10).length, 0);
   assert.equal(store.hashExists("a", null, "h"), true);
 });
+
+import { LLMError, FallbackLLM, type LLM } from "../content/llm.js";
+
+function failing(kind: LLMError["kind"]): LLM {
+  return {
+    write: async () => { throw new LLMError(`test ${kind}`, kind, 60_000); },
+    review: async () => { throw new LLMError(`test ${kind}`, kind, 60_000); },
+  };
+}
+
+test("when a model is unavailable the next one writes, and the broken one rests", async () => {
+  let clock = 1_000_000;
+  const good = new FakeLLM();
+  const fb = new FallbackLLM(
+    [
+      { name: "a", llm: failing("rate_limit") },
+      { name: "b", llm: failing("bad_request") },
+      { name: "c", llm: good },
+    ],
+    () => clock,
+  );
+  const channel = makeConfig([{ id: "x", mode: "creative" }]).channels[0]!;
+  const req = { channel, mode: "creative" as const, counts: { text: 2 }, usedKeys: [], samples: [], sources: [] };
+  assert.equal((await fb.write(req)).length, 2);
+  const st = fb.status();
+  assert.match(st[0]!.problem ?? "", /rate_limit/);
+  assert.match(st[1]!.problem ?? "", /bad_request/);
+  assert.equal(st[2]!.problem, null);
+  // resting models are skipped, so the next call goes straight to the working one
+  assert.equal((await fb.write(req)).length, 2);
+  assert.equal(good.calls.write, 2);
+});
+
+test("when every model fails, the call fails with a wait time", async () => {
+  const fb = new FallbackLLM([{ name: "a", llm: failing("server") }, { name: "b", llm: failing("rate_limit") }]);
+  const channel = makeConfig([{ id: "x", mode: "creative" }]).channels[0]!;
+  await assert.rejects(fb.write({ channel, mode: "creative", counts: { text: 1 }, usedKeys: [], samples: [], sources: [] }), LLMError);
+  await assert.rejects(fb.write({ channel, mode: "creative", counts: { text: 1 }, usedKeys: [], samples: [], sources: [] }), /resting/);
+});

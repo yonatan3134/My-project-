@@ -10,7 +10,7 @@ test("the shipped configuration is valid and lists all 37 channels once", () => 
   for (const c of config.channels) assert.match(c.invite, /^0029V[A-Za-z0-9]{17,}$/, `${c.id} has a malformed link`);
   const modes = new Map<string, number>();
   for (const c of config.channels) modes.set(c.mode, (modes.get(c.mode) ?? 0) + 1);
-  assert.deepEqual(Object.fromEntries(modes), { creative: 16, fandom: 16, news: 3, invasion: 1, off: 1 });
+  assert.deepEqual(Object.fromEntries(modes), { creative: 17, fandom: 16, news: 3, invasion: 1 });
   // channels that promise free things only ever publish from real sources
   for (const c of config.channels.filter((c) => c.group === "brawl-free")) {
     assert.equal(c.mode, "news");
@@ -19,6 +19,7 @@ test("the shipped configuration is valid and lists all 37 channels once", () => 
   for (const c of config.channels.filter((c) => c.mode === "fandom")) assert.ok((c.news?.queries.length ?? 0) > 0, `${c.id} has no source`);
   assert.equal(config.settings.provider, "gemini");
   assert.equal(config.settings.model, "gemini-flash-lite-latest");
+  assert.equal(config.settings.models.length, 5);
 });
 
 test("links and bare codes are both accepted", () => {

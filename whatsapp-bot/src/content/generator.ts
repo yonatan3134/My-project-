@@ -83,7 +83,10 @@ export function draftToPayload(d: Draft, mode: "creative" | "fandom" | "news", s
   if (cardText.length < 2 || cardText.length > 220) return { reject: "bad card text" };
   if (text.length > 900) return { reject: "caption too long" };
   const visualQuery = d.visual_query.replace(/[^a-zA-Z ]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
-  return { payload: { kind: d.kind, text, cardText, ...(visualQuery ? { visualQuery } : {}), ...(followup ? { followup } : {}) } };
+  const imagePrompt = d.image_prompt.replace(/\s+/g, " ").trim().slice(0, 400);
+  return {
+    payload: { kind: d.kind, text, cardText, ...(visualQuery ? { visualQuery } : {}), ...(imagePrompt ? { imagePrompt } : {}), ...(followup ? { followup } : {}) },
+  };
 }
 
 function effectiveMode(c: ChannelConfig): "creative" | "fandom" | "news" | null {

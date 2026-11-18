@@ -15,6 +15,8 @@ export interface PostPayload {
   cardText?: string;
   /** English keywords for an optional stock background */
   visualQuery?: string;
+  /** English description for an AI-drawn picture */
+  imagePrompt?: string;
   /** answer / reveal that is published later as a separate message */
   followup?: string;
 }

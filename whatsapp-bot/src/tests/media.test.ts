@@ -41,3 +41,49 @@ test("a card becomes a short MP4 clip", { skip: !(await ffmpegAvailable()) && "f
   assert.equal(clip.seconds, 2);
   assert.equal(clip.width, 720);
 });
+
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import { GoogleGenAI } from "@google/genai";
+import { AiImages } from "../media/aiimage.js";
+import { renderPhotoCard } from "../media/cards.js";
+import { Store } from "../db.js";
+
+test("AI pictures: drawn through the image model, capped per day, failing models rest", async () => {
+  const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#3366ff" } }).png().toBuffer();
+  const seen: string[] = [];
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      seen.push(req.url ?? "");
+      const body = JSON.parse(raw);
+      if ((req.url ?? "").includes("broken-model")) {
+        res.writeHead(403, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: { code: 403, message: "no access", status: "PERMISSION_DENIED" } }));
+      }
+      assert.deepEqual(body.generationConfig.responseModalities, ["IMAGE"]);
+      assert.match(JSON.stringify(body.contents), /No text, letters/);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: png.toString("base64") } }] }, finishReason: "STOP" }] }));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const store = new Store(":memory:");
+    const client = new GoogleGenAI({ apiKey: "k", httpOptions: { baseUrl, retryOptions: { attempts: 1 } } });
+    const ai = new AiImages(store, { enabled: true, maxPerDay: 2, models: ["broken-model", "good-model"], timezone: "UTC" }, "k", () => {}, client);
+    const t = Date.UTC(2026, 10, 18, 12);
+    assert.ok((await ai.draw("a cat on the moon", t))?.equals(png));
+    assert.ok(await ai.draw("a dog", t));
+    assert.equal(await ai.draw("a third one", t), null, "daily limit");
+    assert.equal(seen.filter((u) => u.includes("broken-model")).length, 1, "the refusing model is not asked again the same day");
+    assert.ok(await ai.draw("next day", t + 86_400_000));
+
+    const card = await renderPhotoCard({ photo: png, text: "מה אתם רואים בתמונה? 👀", footer: "ערוץ" });
+    assert.equal((await sharp(card.jpeg).metadata()).width, 1080);
+  } finally {
+    server.close();
+  }
+});

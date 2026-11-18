@@ -14,6 +14,7 @@ const DraftSchema = z.object({
   poll_options: z.array(z.string()),
   card_text: z.string(),
   visual_query: z.string(),
+  image_prompt: z.string(),
   followup: z.string(),
   topic_key: z.string(),
   source_index: z.number().int(),
@@ -217,11 +218,107 @@ export class PacedLLM implements LLM {
   }
 }
 
-/** The model the bot is configured to use, paced to stay inside free-plan limits. */
-export function createLLM(settings: Pick<Settings, "provider" | "model" | "effort">, onUsage: (u: Usage) => void = () => {}): LLM {
-  const inner = settings.provider === "claude" ? new ClaudeLLM(settings, onUsage) : new GeminiLLM(settings, onUsage);
-  // Gemini's free plan allows about 10-15 requests a minute; one every 6 seconds stays under that
-  return new PacedLLM(inner, settings.provider === "claude" ? 1000 : 6000);
+export interface ModelStatus {
+  name: string;
+  /** null = fine; otherwise why it is being skipped */
+  problem: string | null;
+  until: number;
+  lastUsedAt: number;
+}
+
+/**
+ * Tries several models in order. A model that fails because of the service
+ * (overloaded, out of quota, retired, refused) rests for a while and the next
+ * one is asked instead. Only when every model fails does the call fail.
+ */
+export class FallbackLLM implements LLM {
+  private state: ModelStatus[];
+
+  constructor(
+    private models: { name: string; llm: LLM }[],
+    private clock: () => number = Date.now,
+  ) {
+    if (models.length === 0) throw new Error("no AI models to use");
+    this.state = models.map((m) => ({ name: m.name, problem: null, until: 0, lastUsedAt: 0 }));
+  }
+
+  status(): ModelStatus[] {
+    return this.state.map((s) => ({ ...s }));
+  }
+
+  /** How long a model rests after each kind of failure. */
+  private static rest(e: LLMError): number {
+    switch (e.kind) {
+      case "bad_request":
+        return 24 * 60 * MINUTE; // usually: this model does not exist (any more) for this key
+      case "auth":
+        return 60 * MINUTE;
+      case "rate_limit":
+        return 15 * MINUTE;
+      case "refusal":
+      case "truncated":
+      case "invalid":
+        return 0; // a problem with this one request: try the next model now, keep this one for later
+      default:
+        return 5 * MINUTE;
+    }
+  }
+
+  private async run<T>(call: (llm: LLM) => Promise<T>): Promise<T> {
+    let last: LLMError | null = null;
+    const now = this.clock();
+    for (let i = 0; i < this.models.length; i++) {
+      const st = this.state[i]!;
+      if (st.until > now) continue;
+      try {
+        const out = await call(this.models[i]!.llm);
+        st.problem = null;
+        st.lastUsedAt = this.clock();
+        return out;
+      } catch (err) {
+        const e = err instanceof LLMError ? err : new LLMError((err as Error)?.message ?? String(err), "server", 5 * MINUTE);
+        last = e;
+        st.problem = `${e.kind}: ${e.message.slice(0, 160)}`;
+        st.until = this.clock() + FallbackLLM.rest(e);
+      }
+    }
+    if (last) throw last;
+    // every model is resting: wait until the first one is back
+    const soonest = Math.min(...this.state.map((s) => s.until)) - now;
+    throw new LLMError("all AI models are resting after errors", "rate_limit", Math.max(soonest, MINUTE));
+  }
+
+  write(req: WriterRequest): Promise<Draft[]> {
+    return this.run((m) => m.write(req));
+  }
+
+  review(channel: ChannelConfig, items: ReviewItem[], sources: SourceItem[]): Promise<Verdict[]> {
+    return this.run((m) => m.review(channel, items, sources));
+  }
+}
+
+/**
+ * The models the bot is configured to use, in order, each paced to stay
+ * inside free-plan limits. Models whose service has no key are left out.
+ */
+export function createLLM(
+  chain: { provider: "gemini" | "claude"; model: string }[],
+  effort: Settings["effort"],
+  onUsage: (u: Usage) => void = () => {},
+): FallbackLLM {
+  const gemini = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
+  const claude = process.env.ANTHROPIC_API_KEY?.trim() || process.env.ANTHROPIC_AUTH_TOKEN?.trim();
+  const models = chain
+    .filter((m) => (m.provider === "claude" ? claude : gemini))
+    .map((m) => ({
+      name: `${m.provider}:${m.model}`,
+      llm:
+        m.provider === "claude"
+          ? new PacedLLM(new ClaudeLLM({ model: m.model, effort }, onUsage), 1000)
+          : // Gemini's free plan allows about 10-15 requests a minute per model; one every 6 seconds stays under that
+            new PacedLLM(new GeminiLLM({ model: m.model }, onUsage), 6000),
+    }));
+  return new FallbackLLM(models);
 }
 
 /**
@@ -257,6 +354,7 @@ export class FakeLLM implements LLM {
         poll_options: kind === "poll" ? [`כן ${words(n + 1000000, 1)}`, `לא ${words(n + 2000000, 1)}`] : [],
         card_text: kind === "image" || kind === "video" ? `כרטיס ${words(n + 3000000, 3)}` : "",
         visual_query: kind === "image" || kind === "video" ? "abstract colors" : "",
+        image_prompt: kind === "image" || kind === "video" ? "a colorful cartoon illustration" : "",
         followup: kind === "text" && n % 4 === 0 ? `התשובה: ${words(n + 4000000, 2)}` : "",
         topic_key: idea,
         source_index: sourceIndex,

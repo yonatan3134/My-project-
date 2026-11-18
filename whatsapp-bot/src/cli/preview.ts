@@ -2,7 +2,7 @@
  * Writes a batch of posts for one channel and prints them, without sending
  * anything: npm run preview -- <channel-id>
  */
-import { aiKey, loadConfig } from "../config.js";
+import { aiKey, loadConfig, modelChain } from "../config.js";
 import { refillChannel } from "../content/generator.js";
 import { createLLM, FakeLLM } from "../content/llm.js";
 import { Store } from "../db.js";
@@ -34,7 +34,7 @@ try {
 let tokens = { input: 0, output: 0 };
 const llm = config.env.fakeLlm
   ? new FakeLLM()
-  : createLLM(config.settings, (u) => {
+  : createLLM(modelChain(config.settings), config.settings.effort, (u) => {
       tokens = { input: tokens.input + u.inputTokens, output: tokens.output + u.outputTokens };
     });
 
