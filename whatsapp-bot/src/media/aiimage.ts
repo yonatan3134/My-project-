@@ -1,4 +1,5 @@
-import { ApiError, GoogleGenAI } from "@google/genai";
+import { ApiError, type GoogleGenAI } from "@google/genai";
+import { discoverGeminiModels, geminiClient } from "../content/llm.js";
 import type { Store } from "../db.js";
 import { dayKey } from "../time.js";
 
@@ -20,7 +21,7 @@ export class AiImages {
     private onNote: (message: string) => void = () => {},
     client?: GoogleGenAI,
   ) {
-    this.client = client ?? (apiKey ? new GoogleGenAI({ apiKey }) : null);
+    this.client = client ?? (apiKey ? geminiClient(apiKey) : null);
   }
 
   private dayCount(now: number): number {
@@ -32,11 +33,27 @@ export class AiImages {
     return { today: this.dayCount(now), max: this.opts.maxPerDay, enabled: this.opts.enabled && this.client !== null };
   }
 
+  private discovered: { at: number; names: string[] } | null = null;
+
+  /** The configured models; "auto" stands for the image models Google lists for this key. */
+  private async modelList(now: number): Promise<string[]> {
+    if (!this.opts.models.includes("auto")) return this.opts.models;
+    if (!this.discovered || now - this.discovered.at > 6 * 3600_000) {
+      try {
+        this.discovered = { at: now, names: await discoverGeminiModels(this.client!, "image") };
+      } catch (err) {
+        this.onNote(`AI image: could not list models: ${(err as Error).message.slice(0, 150)}`);
+        this.discovered = { at: now, names: [] };
+      }
+    }
+    return this.opts.models.flatMap((m) => (m === "auto" ? this.discovered!.names : [m]));
+  }
+
   /** A PNG/JPEG picture, or null when no picture could be made (the caller then uses its own background). */
   async draw(prompt: string, now = Date.now()): Promise<Buffer | null> {
     if (!this.client || !this.opts.enabled || !prompt.trim()) return null;
     if (this.dayCount(now) >= this.opts.maxPerDay) return null;
-    for (const model of this.opts.models) {
+    for (const model of await this.modelList(now)) {
       const restKey = `aiimg_rest:${model}`;
       if ((this.store.getNumber(restKey) ?? 0) > now) continue;
       try {

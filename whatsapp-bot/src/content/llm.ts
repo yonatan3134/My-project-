@@ -138,7 +138,7 @@ export class GeminiLLM implements LLM {
     private onUsage: (u: Usage) => void = () => {},
     client?: GoogleGenAI,
   ) {
-    this.client = client ?? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "" });
+    this.client = client ?? geminiClient(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "");
   }
 
   private async call<T>(system: string, user: string, schema: z.ZodType<T>): Promise<T> {
@@ -218,6 +218,88 @@ export class PacedLLM implements LLM {
   }
 }
 
+/** A Gemini client on the API version where every current model and alias is available. */
+export function geminiClient(apiKey: string): GoogleGenAI {
+  return new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
+}
+
+const SKIP_MODEL = /image|tts|embed|live|audio|native|vision|robotics|computer|learnlm|gemma|aqa|-exp|exp-|nano/i;
+
+function modelRank(name: string): number[] {
+  const family = /flash-lite/.test(name) ? 0 : /flash/.test(name) ? 1 : /pro/.test(name) ? 2 : 3;
+  const version = Number(name.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] ?? 0);
+  const preview = /preview|latest/.test(name) ? 1 : 0;
+  return [family, -version, preview];
+}
+
+/** Text models this Gemini key can use right now, cheapest and newest first. */
+export async function discoverGeminiModels(client: GoogleGenAI, kind: "text" | "image" = "text"): Promise<string[]> {
+  const names: string[] = [];
+  const pager = await client.models.list({ config: { pageSize: 200 } });
+  for await (const m of pager) {
+    const name = (m.name ?? "").replace(/^models\//, "");
+    if (!name.startsWith("gemini") || !(m.supportedActions ?? []).includes("generateContent")) continue;
+    if (kind === "image" ? !/image/i.test(name) : SKIP_MODEL.test(name)) continue;
+    names.push(name);
+  }
+  return names.sort((a, b) => {
+    const x = modelRank(a), y = modelRank(b);
+    for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i]! - y[i]!;
+    return a.localeCompare(b);
+  });
+}
+
+/**
+ * "gemini:auto": asks Google which models this key may use, and uses the
+ * best few of them with fallback between them. Names change often (models
+ * are retired, renamed, or only open to some accounts), so the bot does not
+ * depend on any fixed name. The list is refreshed every 6 hours.
+ */
+export class AutoGeminiLLM implements LLM {
+  private inner: FallbackLLM | null = null;
+  private loadedAt = 0;
+  private error: string | null = null;
+
+  constructor(
+    private client: GoogleGenAI,
+    private onUsage: (u: Usage) => void = () => {},
+    private max = 4,
+  ) {}
+
+  private async models(): Promise<FallbackLLM> {
+    if (this.inner && Date.now() - this.loadedAt < 6 * 60 * MINUTE) return this.inner;
+    let names: string[];
+    try {
+      names = (await discoverGeminiModels(this.client)).slice(0, this.max);
+    } catch (err) {
+      this.error = (err as Error).message.slice(0, 200);
+      if (this.inner) return this.inner;
+      throw geminiError(err);
+    }
+    if (names.length === 0) {
+      this.error = "Google did not list any usable text model for this key";
+      throw new LLMError(this.error, "bad_request", 60 * MINUTE);
+    }
+    this.error = null;
+    this.inner = new FallbackLLM(names.map((n) => ({ name: `gemini:${n}`, llm: new PacedLLM(new GeminiLLM({ model: n }, this.onUsage, this.client), 6000) })));
+    this.loadedAt = Date.now();
+    return this.inner;
+  }
+
+  status(): ModelStatus[] {
+    if (this.inner) return this.inner.status();
+    return [{ name: "gemini:auto", problem: this.error ?? "מחפש מודלים זמינים...", until: this.error ? Date.now() + 1 : 0, lastUsedAt: 0 }];
+  }
+
+  async write(req: WriterRequest): Promise<Draft[]> {
+    return (await this.models()).write(req);
+  }
+
+  async review(channel: ChannelConfig, items: ReviewItem[], sources: SourceItem[]): Promise<Verdict[]> {
+    return (await this.models()).review(channel, items, sources);
+  }
+}
+
 export interface ModelStatus {
   name: string;
   /** null = fine; otherwise why it is being skipped */
@@ -243,7 +325,10 @@ export class FallbackLLM implements LLM {
   }
 
   status(): ModelStatus[] {
-    return this.state.map((s) => ({ ...s }));
+    return this.state.flatMap((s, i) => {
+      const inner = this.models[i]!.llm as Partial<{ status(): ModelStatus[] }>;
+      return typeof inner.status === "function" && s.until <= this.clock() ? inner.status() : [{ ...s }];
+    });
   }
 
   /** How long a model rests after each kind of failure. */
@@ -313,10 +398,12 @@ export function createLLM(
     .map((m) => ({
       name: `${m.provider}:${m.model}`,
       llm:
-        m.provider === "claude"
+        m.provider === "gemini" && m.model === "auto"
+          ? new AutoGeminiLLM(geminiClient(gemini ?? ""), onUsage)
+          : m.provider === "claude"
           ? new PacedLLM(new ClaudeLLM({ model: m.model, effort }, onUsage), 1000)
-          : // Gemini's free plan allows about 10-15 requests a minute per model; one every 6 seconds stays under that
-            new PacedLLM(new GeminiLLM({ model: m.model }, onUsage), 6000),
+            : // Gemini's free plan allows about 10-15 requests a minute per model; one every 6 seconds stays under that
+              new PacedLLM(new GeminiLLM({ model: m.model }, onUsage), 6000),
     }));
   return new FallbackLLM(models);
 }

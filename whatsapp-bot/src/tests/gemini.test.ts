@@ -91,3 +91,44 @@ test("API errors are classified", async () => {
   reply = { status: 503, body: err(503, "UNAVAILABLE") };
   assert.equal((await failure()).kind, "server");
 });
+
+import { AutoGeminiLLM, discoverGeminiModels } from "../content/llm.js";
+
+test("auto: asks Google which models the key can use, picks cheap text models first, skips retired ones", async () => {
+  const models = [
+    { name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] },
+    { name: "models/gemini-3.5-flash-lite", supportedGenerationMethods: ["generateContent", "countTokens"] },
+    { name: "models/gemini-3.5-flash", supportedGenerationMethods: ["generateContent"] },
+    { name: "models/gemini-3.5-pro", supportedGenerationMethods: ["generateContent"] },
+    { name: "models/gemini-3.5-flash-image", supportedGenerationMethods: ["generateContent"] },
+    { name: "models/gemini-embedding-2", supportedGenerationMethods: ["embedContent"] },
+    { name: "models/gemini-3.5-flash-tts", supportedGenerationMethods: ["generateContent"] },
+  ];
+  const calls: string[] = [];
+  const srv = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      calls.push(`${req.method} ${req.url}`);
+      const retired = (req.url ?? "").includes("gemini-3.5-flash-lite:");
+      res.writeHead(retired ? 404 : 200, { "content-type": "application/json" });
+      if (req.method === "GET") return res.end(JSON.stringify({ models }));
+      if (retired) return res.end(JSON.stringify({ error: { code: 404, message: "This model is no longer available to new users", status: "NOT_FOUND" } }));
+      res.end(JSON.stringify(answer(JSON.stringify({ posts: [DRAFT] }))));
+    });
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  const client = new GoogleGenAI({ apiKey: "k", apiVersion: "v1beta", httpOptions: { baseUrl: `http://127.0.0.1:${(srv.address() as AddressInfo).port}`, retryOptions: { attempts: 1 } } });
+  try {
+    assert.deepEqual(await discoverGeminiModels(client), ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.5-pro"]);
+    assert.deepEqual(await discoverGeminiModels(client, "image"), ["gemini-3.5-flash-image"]);
+    const auto = new AutoGeminiLLM(client);
+    assert.deepEqual(await auto.write(request), [DRAFT]);
+    assert.ok(calls.some((c) => c.includes("/v1beta/models/gemini-3.5-flash:generateContent")), "fell through to the next model");
+    const st = auto.status();
+    assert.match(st[0]!.problem ?? "", /bad_request/);
+    assert.equal(st[1]!.problem, null);
+  } finally {
+    srv.close();
+  }
+});
