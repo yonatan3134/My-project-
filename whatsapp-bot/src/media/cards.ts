@@ -1,4 +1,5 @@
-import sharp, { type OverlayOptions, type Sharp } from "sharp";
+import type { OverlayOptions, Sharp } from "sharp";
+import { loadSharp } from "./img.js";
 import { hash32 } from "../time.js";
 
 export const CARD_SIZE = 1080;
@@ -37,6 +38,7 @@ function gradientSvg(seed: string, size: number): Buffer {
  * Hebrew/English lines, emoji, wrapping and fitting the text into the box.
  */
 async function textLayer(text: string, width: number, height: number, weight = "bold"): Promise<Buffer> {
+  const sharp = await loadSharp();
   return sharp({
     text: {
       text: `<span foreground="white" weight="${weight}">${escapeMarkup(text)}</span>`,
@@ -58,15 +60,19 @@ export interface CardImage {
   thumbnail: string;
   width: number;
   height: number;
+  /** text that could not be drawn on the picture and belongs in the caption instead */
+  captionExtra?: string;
 }
 
 async function finish(img: Sharp, size: number): Promise<CardImage> {
+  const sharp = await loadSharp();
   const jpeg = await img.jpeg({ quality: 86 }).toBuffer();
   const thumb = await sharp(jpeg).resize(96, 96, { fit: "cover" }).jpeg({ quality: 55 }).toBuffer();
   return { jpeg, thumbnail: thumb.toString("base64"), width: size, height: size };
 }
 
 async function footerLayer(footer: string, size: number): Promise<OverlayOptions[]> {
+  const sharp = await loadSharp();
   if (!footer) return [];
   const layer = await textLayer(footer, Math.round(size * 0.7), Math.round(size * 0.035), "normal");
   const meta = await sharp(layer).metadata();
@@ -75,6 +81,7 @@ async function footerLayer(footer: string, size: number): Promise<OverlayOptions
 
 /** A square picture: the text on a coloured gradient (or on a darkened photo when one is supplied). */
 export async function renderCard(opts: { text: string; footer?: string; seed: string; background?: Buffer; size?: number }): Promise<CardImage> {
+  const sharp = await loadSharp();
   const size = opts.size ?? CARD_SIZE;
   const text = await textLayer(opts.text, Math.round(size * 0.76), Math.round(size * 0.56));
   let base: Sharp;
@@ -90,6 +97,7 @@ export async function renderCard(opts: { text: string; footer?: string; seed: st
 
 /** Transparent text layer that is laid over a stock video. */
 export async function renderOverlay(opts: { text: string; width: number; height: number }): Promise<Buffer> {
+  const sharp = await loadSharp();
   const { width, height } = opts;
   const boxW = Math.round(width * 0.86);
   const boxH = Math.round(height * 0.34);
@@ -107,10 +115,12 @@ export async function renderOverlay(opts: { text: string; width: number; height:
  * itself stays visible. Without text the picture is only resized.
  */
 export async function renderPhotoCard(opts: { photo: Buffer; text?: string; footer?: string; size?: number }): Promise<CardImage> {
+  const sharp = await loadSharp();
   const size = opts.size ?? CARD_SIZE;
   const photo = await sharp(opts.photo).resize(size, size, { fit: "cover" }).toBuffer();
   const text = (opts.text ?? "").trim();
   if (!text) return finish(sharp(photo), size);
+  if (!(await canDrawText())) return { ...(await finish(sharp(photo), size)), captionExtra: text };
   const bandH = Math.round(size * 0.3);
   const band = Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
@@ -127,4 +137,19 @@ export async function renderPhotoCard(opts: { photo: Buffer; text?: string; foot
     ...(await footerLayer(opts.footer ?? "", size)),
   ];
   return finish(sharp(photo).composite(layers), size);
+}
+
+let textSupport: boolean | undefined;
+
+/** Whether this device can draw text on pictures (the WebAssembly build used on phones cannot). */
+export async function canDrawText(): Promise<boolean> {
+  if (textSupport === undefined) {
+    try {
+      await textLayer("א", 40, 40);
+      textSupport = true;
+    } catch {
+      textSupport = false;
+    }
+  }
+  return textSupport;
 }

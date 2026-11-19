@@ -38,6 +38,27 @@ Hetzner Cloud, התוכנית הקטנה ביותר עם 4GB זיכרון (נק�
 
 מהטלפון שלך (הבעלים): פותחים את הערוץ > לוחצים על שם הערוץ > "הזמנת מנהלים" > בוחרים את המספר של הבוט. אחר כך מאשרים את ההזמנה מהטלפון של הבוט. צריך לעשות את זה בכל ערוץ.
 
+## התקנה על טלפון אנדרואיד (בלי מחשב)
+
+1. מתקינים את **Termux** מ-[F-Droid](https://f-droid.org/packages/com.termux/). הגרסה שב-Google Play ישנה ולא עובדת.
+2. פותחים את Termux ומדביקים:
+   ```
+   pkg install -y git && git clone https://github.com/yonatan3134/My-project-.git ~/bot && bash ~/bot/whatsapp-bot/termux/install.sh
+   ```
+3. בסוף פותחים בדפדפן של הטלפון `http://localhost:8080`. זה אותו אתר הגדרות כמו במחשב.
+
+כדי שהבוט ימשיך לרוץ:
+- **לא סוגרים את Termux** (לא מקלידים `exit`). מספיק להשאיר אותו ברקע.
+- בהגדרות אנדרואיד: אפליקציות > Termux > סוללה > **ללא הגבלה**. בלי זה אנדרואיד עלול לעצור את הבוט.
+- הטלפון צריך להיות מחובר לחשמל ולאינטרנט כל הזמן.
+- **הפעלה עם הטלפון:** מתקינים גם את **Termux:Boot** מ-F-Droid ופותחים אותו פעם אחת.
+
+**הבדל מהמחשב:** בטלפון ספריית התמונות לא יודעת לכתוב טקסט על תמונה. לכן תמונות AI יוצאות בלי טקסט עליהן, והטקסט עובר לכיתוב שמתחת לתמונה. פוסט שהיה אמור להיות כרטיס צבעוני עם טקסט יוצא כטקסט רגיל.
+
+**פקודות ב-Termux:** עצירה `bash ~/bot/whatsapp-bot/termux/stop.sh`, הפעלה `bash ~/bot/whatsapp-bot/termux/start.sh`, יומן `bash ~/bot/whatsapp-bot/termux/log.sh`, עדכון לגרסה חדשה `bash ~/bot/whatsapp-bot/termux/install.sh`.
+
+ההתקנה בטלפון לא נבדקה על טלפון אמיתי. אם משהו נכשל, צילום של החלון ב-Termux יראה מה לתקן.
+
 ## התקנה על מחשב Windows בבית (בלי שרת, בחינם)
 
 1. מורידים את הקוד: [github.com/yonatan3134/My-project-/archive/refs/heads/main.zip](https://github.com/yonatan3134/My-project-/archive/refs/heads/main.zip)
