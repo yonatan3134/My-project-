@@ -4,7 +4,11 @@ import {
   DEFAULT_ORIGIN,
   WAMessageStatus,
   encodeBase64EncodedStringForUpload,
+  encodeNewsletterMessage,
   generateWAMessage,
+  isJidNewsletter,
+  normalizeMessageContent,
+  type BinaryNode,
   type AnyMessageContent,
   type WAMediaUploadFunction,
   type WAMessage,
@@ -88,6 +92,27 @@ function channelUpload(sock: WASocket, onThumb: (t: ServerThumb) => void): WAMed
   };
 }
 
+/**
+ * The message as WhatsApp expects it for a channel poll or media post. The
+ * library sends these without the parts channels require (WhatsApp answers
+ * with error 479): polls need a <meta polltype="creation"> node and no
+ * encryption secret, and media needs its type on the <plaintext> node.
+ * Returns null for plain text, which the library already sends correctly.
+ */
+export function channelStanza(jid: string, id: string, message: WAMessage["message"]): BinaryNode | null {
+  if (!message) return null;
+  const inner = normalizeMessageContent(message);
+  const isPoll = Boolean(inner?.pollCreationMessageV3 || inner?.pollCreationMessage || inner?.pollCreationMessageV2);
+  const mediaType = inner?.imageMessage ? "image" : inner?.videoMessage ? (inner.videoMessage.gifPlayback ? "gif" : "video") : null;
+  if (!isPoll && !mediaType) return null;
+  const msg = { ...message };
+  if (isPoll) delete msg.messageContextInfo; // channel polls are public; the per-chat vote secret is not sent
+  const content: BinaryNode[] = [];
+  if (isPoll) content.push({ tag: "meta", attrs: { polltype: "creation", contenttype: "text" } });
+  content.push({ tag: "plaintext", attrs: mediaType ? { mediatype: mediaType } : {}, content: encodeNewsletterMessage(msg as Parameters<typeof encodeNewsletterMessage>[0]) });
+  return { tag: "message", attrs: { to: jid, id, type: isPoll ? "poll" : "media" }, content };
+}
+
 export class WaSender implements Sender {
   /** message id -> error code, for sends WhatsApp answered with a rejection */
   private rejected = new Map<string, string>();
@@ -125,7 +150,9 @@ export class WaSender implements Sender {
     const id = full.key.id as string;
     if (!full.message) return { ok: false, error: "empty message" };
     try {
-      await sock.relayMessage(jid, full.message, { messageId: id });
+      const node = isJidNewsletter(jid) ? channelStanza(jid, id, full.message) : null;
+      if (node) await sock.sendNode(node);
+      else await sock.relayMessage(jid, full.message, { messageId: id });
     } catch (err) {
       return { ok: false, uncertain: true, error: `connection broke while sending: ${(err as Error).message}` };
     }

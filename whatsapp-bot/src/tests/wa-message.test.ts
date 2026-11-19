@@ -70,3 +70,26 @@ test("followers and guests never post; an unreported role is left for WhatsApp t
   assert.equal(canPost("GUEST"), false);
   assert.equal(canPost(null), true);
 });
+
+import { channelStanza } from "../wa/sender.js";
+import { getBinaryNodeChild } from "baileys";
+
+test("channel polls and media are sent with the parts WhatsApp requires for channels", async () => {
+  const poll = await build({ poll: { name: "מה עדיף?", values: ["פיצה", "המבורגר"], selectableCount: 1 } });
+  const p = channelStanza(JID, "id1", poll.message)!;
+  assert.equal(p.attrs.type, "poll");
+  assert.deepEqual(getBinaryNodeChild(p, "meta")?.attrs, { polltype: "creation", contenttype: "text" });
+  const { proto } = await import("baileys");
+  const decoded = proto.Message.decode(getBinaryNodeChild(p, "plaintext")!.content as Uint8Array);
+  assert.equal(decoded.pollCreationMessageV3?.name, "מה עדיף?");
+  assert.equal(decoded.messageContextInfo, null, "no encryption secret on a channel poll");
+
+  const card = await renderCard({ text: "תמונה", seed: "s" });
+  const img = await build({ image: card.jpeg, caption: "כיתוב", mimetype: "image/jpeg" });
+  const i = channelStanza(JID, "id2", img.message)!;
+  assert.equal(i.attrs.type, "media");
+  assert.deepEqual(getBinaryNodeChild(i, "plaintext")?.attrs, { mediatype: "image" });
+
+  const text = await build({ text: "רק טקסט" });
+  assert.equal(channelStanza(JID, "id3", text.message), null, "text keeps the library's own path, which works");
+});
