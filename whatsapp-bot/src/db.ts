@@ -38,6 +38,8 @@ export interface QueueRow {
   is_followup: number;
   /** 1 = the owner's "every N posts" special post */
   special: number;
+  /** 1 = the owner pressed "send now" on the website */
+  manual: number;
   attempts: number;
   source_item_id: number | null;
   created_at: number;
@@ -204,6 +206,7 @@ export class Store {
     // columns added after the first release
     const cols = new Set((this.db.prepare("PRAGMA table_info(queue)").all() as { name: string }[]).map((c) => c.name));
     if (!cols.has("special")) this.db.exec("ALTER TABLE queue ADD COLUMN special INTEGER NOT NULL DEFAULT 0");
+    if (!cols.has("manual")) this.db.exec("ALTER TABLE queue ADD COLUMN manual INTEGER NOT NULL DEFAULT 0");
   }
 
   close(): void {
@@ -257,12 +260,14 @@ export class Store {
     special?: boolean;
     /** waits for the owner's approval on the website before it can be sent */
     pending?: boolean;
+    /** sent on the owner's request from the website: goes out even in quiet hours or a paused channel */
+    manual?: boolean;
     now: number;
   }): number {
     const info = this.db
       .prepare(
-        `INSERT INTO queue (channel_id, grp, kind, payload, topic_key, norm_text, norm_hash, not_before, is_followup, source_item_id, special, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO queue (channel_id, grp, kind, payload, topic_key, norm_text, norm_hash, not_before, is_followup, source_item_id, special, status, manual, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         row.channelId,
@@ -277,6 +282,7 @@ export class Store {
         row.sourceItemId ?? null,
         row.special ? 1 : 0,
         row.pending ? "pending" : "ready",
+        row.manual ? 1 : 0,
         row.now,
         row.now,
       );
@@ -452,6 +458,13 @@ export class Store {
   /** Throws away one waiting post. It still counts as used, so the same idea is not written again. */
   discardOne(id: number, now: number): boolean {
     return this.q("UPDATE queue SET status = 'discarded', updated_at = ? WHERE id = ? AND status IN ('ready','pending')").run(now, id).changes === 1;
+  }
+
+  /** "Send the whole queue now": every waiting post of the channel goes out right away, one after another. */
+  flushQueue(channelId: string, now: number): number {
+    return this.q(
+      "UPDATE queue SET is_followup = 1, manual = 1, not_before = ?, updated_at = ? WHERE channel_id = ? AND status = 'ready' AND is_followup = 0",
+    ).run(now, now, channelId).changes;
   }
 
   // ---- approval ---------------------------------------------------------

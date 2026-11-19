@@ -305,3 +305,42 @@ test("approval mode: nothing goes out until approved; approved posts go out on s
   await simulate({ config, days: 1, start: START + DAY, sender, store });
   assert.equal(sender.log.filter((s) => !s.body.startsWith("התשובה")).length, 2, "exactly the two approved posts");
 });
+
+test("send now: a riddle goes out at once (also at night in growth mode) and its answer follows", async () => {
+  const { writeNow } = await import("../content/generator.js");
+  const { FakeLLM } = await import("../content/llm.js");
+  const config = makeConfig([{ id: "r", mode: "creative" }]);
+  const store = new Store(":memory:");
+  store.set("growth", "1"); // quiet 00:00-07:00
+  store.updateChannel("r", { jid: "sim-r@newsletter", role: "ADMIN", resolved_at: START, paused: 1 });
+  const night = START + 2 * HOUR; // 02:00 in Israel
+  const llm = new FakeLLM();
+  const orig = llm.write.bind(llm);
+  llm.write = async (req) => (await orig(req)).map((d) => ({ ...d, text: "חידה: מה תמיד מגיע אבל אף פעם לא כאן?", followup: "התשובה: מחר!" }));
+  const r = await writeNow({ store, llm, settings: config.settings }, config.channels[0]!, "חידה", night);
+  assert.ok("text" in r, JSON.stringify(r));
+  const sender = new ScriptedSender();
+  let clock = night;
+  const scheduler = new Scheduler({ store, config, sender, media: stubMedia, now: () => clock, random: seededRandom(3), isConnected: () => true });
+  for (; clock < night + 2 * MINUTE; clock += 15_000) await scheduler.tick();
+  assert.equal(sender.log.length, 1, "sent right away, despite night and the paused channel");
+  assert.match(sender.log[0]!.body, /חידה/);
+  const answer = store.db.prepare("SELECT payload, not_before FROM queue WHERE status = 'ready' AND is_followup = 1").get() as { payload: string; not_before: number };
+  assert.equal(JSON.parse(answer.payload).text, "התשובה: מחר!");
+  assert.ok(answer.not_before >= night + 25 * MINUTE, "the answer comes about half an hour later");
+});
+
+test("send the whole queue now: every waiting post goes out within minutes, spaced out", async () => {
+  const config = makeConfig([{ id: "q", mode: "creative" }]);
+  const store = new Store(":memory:");
+  store.updateChannel("q", { jid: "sim-q@newsletter", role: "ADMIN", resolved_at: START });
+  for (let i = 0; i < 5; i++) store.enqueue({ channelId: "q", payload: { kind: "text", text: `פוסט ${i}` }, normHash: `h${i}`, now: START });
+  const sender = new ScriptedSender();
+  let clock = START + 3 * HOUR + 30 * MINUTE; // whatever part of the cycle it is
+  const t0 = clock;
+  assert.equal(store.flushQueue("q", t0), 5);
+  const scheduler = new Scheduler({ store, config, sender, media: stubMedia, now: () => clock, random: seededRandom(4), isConnected: () => true });
+  for (; clock < t0 + 10 * MINUTE; clock += 15_000) await scheduler.tick();
+  assert.equal(sender.log.length, 5);
+  assert.equal(store.readyCount("q"), 0);
+});

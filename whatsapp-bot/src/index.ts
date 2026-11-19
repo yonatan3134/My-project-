@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { WAMessage } from "baileys";
 import { aiKey, modelChain, saveEditedChannels, inviteCode, loadConfig, parseConfig, type ChannelConfig } from "./config.js";
-import { refillChannel, type GenContext } from "./content/generator.js";
+import { refillChannel, writeNow, type GenContext } from "./content/generator.js";
 import { createLLM, FakeLLM, FallbackLLM, type LLM } from "./content/llm.js";
 import { AiImages } from "./media/aiimage.js";
 import { Control } from "./control.js";
@@ -463,6 +463,18 @@ async function main(): Promise<void> {
           await run("סרטון", async () => sender.video(st.jid!, await media.video({ kind: "video", text: "", cardText: "בדיקה 4/4\nסרטון מהבוט 🎬" }, c, "test-video"), "🤖 בדיקה 4/4: סרטון"));
           store.event(now(), "info", "test_posts", results.map((r) => `${r.kind}:${r.ok ? "ok" : r.error}`).join(" | "), c.id);
           return { results };
+        },
+        sendNow: async (id, prompt) => {
+          const c = config.channels.find((x) => x.id === id);
+          if (!c) return { error: "ערוץ לא קיים" };
+          if (!gen) return { error: "חסר מפתח AI" };
+          const st = store.channel(c.id);
+          if (!st.jid || !canPost(st.role)) return { error: "הבוט לא מנהל בערוץ הזה (או שהוא עוד לא נמצא)" };
+          return writeNow(gen, c, prompt, now());
+        },
+        flush: (id) => {
+          const n = store.flushQueue(id, now());
+          return n === 0 ? "אין פוסטים בתור של הערוץ הזה" : null;
         },
         queue: (channelId) => store.readyList(channelId, 20).map((r) => ({ id: r.id, kind: r.kind, text: preview(r.payload) })),
         discard: (id) => (store.discardOne(id, now()) ? null : "הפוסט כבר לא בתור"),

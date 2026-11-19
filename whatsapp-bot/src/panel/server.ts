@@ -35,6 +35,8 @@ export interface PanelApi {
   approve(id: number): string | null;
   pending(channelId: string): unknown;
   test(id: string): Promise<{ error?: string; results?: unknown }>;
+  sendNow(id: string, prompt: string): Promise<{ text: string } | { error: string }>;
+  flush(id: string): string | null;
   push(id: string, message: string): string | null;
   discard(id: number): string | null;
 }
@@ -142,6 +144,13 @@ export function startPanel(api: PanelApi, port: number): http.Server {
             const r = await api.test(String(body.id ?? ""));
             return send(res, r.error ? 400 : 200, r);
           }
+          case "/api/send-now": {
+            const r = await api.sendNow(String(body.id ?? ""), String(body.prompt ?? "").slice(0, 300));
+            return send(res, "error" in r ? 400 : 200, r);
+          }
+          case "/api/flush":
+            error = api.flush(String(body.id ?? ""));
+            break;
           case "/api/approve-mode":
             error = api.setApprove(String(body.id ?? ""), body.on === true);
             break;
