@@ -39,7 +39,10 @@
       "poll": 5,
       "image": 1,
       "video": 0
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "daily-motivation",
@@ -68,7 +71,10 @@
       "poll": 9,
       "image": 0,
       "video": 0
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "stickers-jokes",
@@ -111,7 +117,10 @@
         "בראול סטארס"
       ],
       "feeds": []
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "big-brother",
@@ -183,7 +192,10 @@
         "בראול סטארס"
       ],
       "feeds": []
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "zikui-harabim",
@@ -218,7 +230,10 @@
         "בראול סטארס"
       ],
       "feeds": []
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "brawl-pro-2",
@@ -233,7 +248,10 @@
         "בראול סטארס"
       ],
       "feeds": []
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "brawl-pro-3",
@@ -248,7 +266,10 @@
         "בראול סטארס"
       ],
       "feeds": []
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "brawl-pro-4",
@@ -263,7 +284,10 @@
         "בראול סטארס"
       ],
       "feeds": []
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "brawl-stars-il",
@@ -278,7 +302,10 @@
         "בראול סטארס"
       ],
       "feeds": []
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "brawl-fun",
@@ -293,7 +320,10 @@
       "poll": 5,
       "image": 1,
       "video": 0
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "brawl-stars-sparkle",
@@ -308,7 +338,10 @@
         "בראול סטארס"
       ],
       "feeds": []
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "prostars",
@@ -323,7 +356,10 @@
         "בראול סטארס"
       ],
       "feeds": []
-    }
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
   },
   {
     "id": "brawl-free-passes",

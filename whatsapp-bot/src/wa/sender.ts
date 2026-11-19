@@ -21,6 +21,7 @@ import type { VideoClip } from "../media/video.js";
 import { DRY_RUN_DIR } from "../paths.js";
 import { sleep } from "../time.js";
 import type { WaClient } from "./client.js";
+import { youtubePreview } from "../content/youtube.js";
 
 export interface SendResult {
   ok: boolean;
@@ -165,7 +166,13 @@ export class WaSender implements Sender {
     if (!this.client.isOpen || !sock?.user) return { ok: false, error: "not connected" };
     let full: WAMessage;
     try {
-      full = await generateWAMessage(jid, content, { userJid: sock.user.id, upload: sock.waUploadToServer, logger: waLogger });
+      full = await generateWAMessage(jid, content, {
+        userJid: sock.user.id,
+        upload: sock.waUploadToServer,
+        logger: waLogger,
+        // a YouTube link shows the video's title and picture under the post
+        getUrlInfo: (url) => youtubePreview(url),
+      });
     } catch (err) {
       return { ok: false, error: `could not build the message: ${(err as Error).message}` };
     }

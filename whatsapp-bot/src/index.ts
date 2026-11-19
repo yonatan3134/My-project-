@@ -306,7 +306,7 @@ async function main(): Promise<void> {
               const st = store.channel(c.id);
               const f = store.followers(c.id);
               return {
-                id: c.id, name: c.name, invite: c.invite, mode: c.mode, topic: c.topic, queries: c.news?.queries ?? [], enabled: c.enabled,
+                id: c.id, name: c.name, invite: c.invite, mode: c.mode, topic: c.topic, queries: c.news?.queries ?? [], youtube: c.youtube, enabled: c.enabled,
                 role: st.role, sentToday: perChannel.get(c.id) ?? 0, ready: store.readyCount(c.id), followers: f.count, followersWeek: f.week,
                 paused: st.paused === 1, maxPerDay: c.maxPerDay ?? null, cycle: c.cycle ?? null, special: c.special ?? null,
                 cap: dailyCap(c, settings, st.activated_at, now()),
@@ -369,6 +369,9 @@ async function main(): Promise<void> {
             } else delete next.special;
             if (queries.length > 0) next.news = { feeds: [], ...(prev?.news ?? {}), queries };
             else delete next.news;
+            const youtube = Array.isArray(raw.youtube) ? raw.youtube.map(String).map((y) => y.trim()).filter((y) => y.length >= 2).slice(0, 10) : [];
+            if (youtube.length > 0) next.youtube = youtube;
+            else delete next.youtube;
             list.push(next as ChannelConfig);
           }
           try {

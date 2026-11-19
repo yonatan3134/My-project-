@@ -222,6 +222,7 @@ function renderChannels(list) {
       '<label>סוג</label><select class="mode">' + opts + "</select>" +
       '<label>על מה הערוץ (ה-AI כותב לפי זה)</label><textarea class="topic">' + esc(c.topic) + "</textarea>" +
       '<label>מילות חיפוש לחדשות אמיתיות, מופרדות בפסיק</label><input class="queries" value="' + esc((c.queries || []).join(", ")) + '">' +
+      '<label>🎬 ערוצי יוטיוב: סרטון חדש שלהם יפורסם כאן עם קישור (למשל @BrawlStars, מופרדים בפסיק)</label><input class="yt ltr" value="' + esc((c.youtube || []).join(", ")) + '">' +
       '<h3 style="font-size:15px;margin:14px 0 0">⏰ כל כמה זמן</h3>' +
       '<p class="hint" style="margin:4px 0">ריק = ההגדרה הכללית (' + dc.postsPerBurst + " פוסטים, כל " + dc.intervalMinutes + " דק׳, ואז הפסקה של " + dc.pauseMinutes + " דק׳)</p>" +
       '<div class="grid3"><div><label>פוסטים ברצף</label><input class="cyB" type="number" min="1" value="' + esc(cy.postsPerBurst ?? "") + '"></div>' +
@@ -289,6 +290,7 @@ function collectChannels() {
     mode: el.querySelector(".mode").value,
     topic: n(el, ".topic"),
     queries: n(el, ".queries").split(",").map((q) => q.trim()).filter(Boolean),
+    youtube: n(el, ".yt").split(",").map((q) => q.trim()).filter(Boolean),
     enabled: el.querySelector(".en").checked,
     maxPerDay: n(el, ".max"),
     cycle: n(el, ".cyB") && n(el, ".cyI") ? { postsPerBurst: n(el, ".cyB"), intervalMinutes: n(el, ".cyI"), pauseMinutes: n(el, ".cyP") || 0 } : null,
@@ -314,7 +316,7 @@ function importList() {
   let list = found.map((f) => {
     const old = byInvite.get(f.invite);
     if (old) return { ...old, name: f.name || old.name };
-    return { id: null, name: f.name || "ערוץ חדש", invite: "https://whatsapp.com/channel/" + f.invite, mode: "creative", topic: f.name, queries: [], enabled: true };
+    return { id: null, name: f.name || "ערוץ חדש", invite: "https://whatsapp.com/channel/" + f.invite, mode: "creative", topic: f.name, queries: [], youtube: [], enabled: true };
   });
   if (removed.length && !confirm("ברשימה החדשה חסרים " + removed.length + " ערוצים:\\n" + removed.map((r) => "• " + r.name).join("\\n") + "\\n\\nלהסיר אותם מהבוט?")) {
     list = list.concat(removed);
@@ -328,7 +330,7 @@ $("importBtn").onclick = importList;
 $("addCh").onclick = () => {
   editing = true;
   const list = collectChannels();
-  list.push({ id: null, name: "", invite: "", mode: "creative", topic: "", queries: [], enabled: true });
+  list.push({ id: null, name: "", invite: "", mode: "creative", topic: "", queries: [], youtube: [], enabled: true });
   renderChannels(list);
   window.scrollTo(0, document.body.scrollHeight);
 };

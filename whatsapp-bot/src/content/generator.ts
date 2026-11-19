@@ -5,6 +5,7 @@ import { candidateOf, DedupIndex, type Candidate } from "./dedup.js";
 import { LLMError, type Draft, type LLM } from "./llm.js";
 import type { ReviewItem } from "./prompts.js";
 import { collectItems, fetchSefariaChapter, fetchText, hebrewNumeral, type FetchText } from "./sources.js";
+import { isYoutubeLink, youtubeChannelId, youtubeFeedUrl } from "./youtube.js";
 
 export interface GenContext {
   store: Store;
@@ -94,11 +95,22 @@ function effectiveMode(c: ChannelConfig): "creative" | "fandom" | "news" | null 
 }
 
 async function refreshSources(ctx: GenContext, channel: ChannelConfig, now: number): Promise<void> {
-  if (!channel.news || channel.news.queries.length + channel.news.feeds.length === 0) return;
+  const queries = channel.news?.queries ?? [];
+  const feeds = [...(channel.news?.feeds ?? [])];
+  if (queries.length + feeds.length + channel.youtube.length === 0) return;
   const state = ctx.store.channel(channel.id);
   if (now - state.sources_checked_at < SOURCE_REFRESH_MS) return;
   ctx.store.updateChannel(channel.id, { sources_checked_at: now });
-  const { items, errors } = await collectItems(channel.news, now, ctx.fetcher ?? fetchText);
+  // new videos of the channel's YouTube channels arrive as source items like news
+  for (const yt of channel.youtube) {
+    try {
+      feeds.push(youtubeFeedUrl(await youtubeChannelId(yt, ctx.store, ctx.fetcher ?? fetchText)));
+    } catch (err) {
+      ctx.store.event(now, "warn", "youtube_error", (err as Error).message, channel.id);
+    }
+  }
+  const { items, errors } = await collectItems({ queries, feeds }, now, ctx.fetcher ?? fetchText);
+  for (const it of items) if (isYoutubeLink(it.link) && !it.source.startsWith("YouTube")) it.source = `YouTube · ${it.source}`;
   ctx.store.addSourceItems(channel.id, items, now);
   for (const e of errors) ctx.store.event(now, "warn", "source_error", e, channel.id);
 }
@@ -177,7 +189,7 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
   // News is taken a little at a time, newest first, so a busy day does not turn a fan channel
   // into a news ticker or leave a queue full of yesterday's headlines.
   let sources: SourceItem[] = [];
-  if (mode !== "creative") {
+  if (mode !== "creative" || channel.youtube.length > 0) {
     const waiting = store.readyNewsCount(channel.id);
     const sentToday = store.newsSentOnDay(channel.id, dayKey(now, settings.timezone));
     const perDay = mode === "news" ? (channel.maxPerDay ?? settings.newsMaxPerDay) : FANDOM_NEWS_PER_DAY;
@@ -293,6 +305,8 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
   const usedSources = new Set<number>();
   for (const k of approved) {
     const src = k.draft.source_index >= 0 ? sources[k.draft.source_index] : undefined;
+    // a post about a video carries the video's link; added after the checks, which reject links written by the AI
+    if (src && isYoutubeLink(src.link) && k.payload.kind === "text") k.payload = { ...k.payload, text: `${k.payload.text}\n\n👇 ${src.link}` };
     store.enqueue({
       pending: needsApproval(ctx, channel),
       channelId: channel.id,
