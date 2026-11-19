@@ -90,3 +90,46 @@ test("when every model fails, the call fails with a wait time", async () => {
   await assert.rejects(fb.write({ channel, mode: "creative", counts: { text: 1 }, usedKeys: [], samples: [], sources: [] }), LLMError);
   await assert.rejects(fb.write({ channel, mode: "creative", counts: { text: 1 }, usedKeys: [], samples: [], sources: [] }), /resting/);
 });
+
+import { recordChannelEngagement } from "../engagement.js";
+import { parseChannelPosts } from "../wa/channels.js";
+import { proto } from "baileys";
+import { refillChannel } from "../content/generator.js";
+
+test("reactions and views are read from WhatsApp's answer and matched to the bot's posts", () => {
+  const msg = (text: string, reactions: [string, number][], views: number) => ({
+    tag: "message",
+    attrs: { server_id: "1" },
+    content: [
+      { tag: "plaintext", attrs: {}, content: proto.Message.encode({ conversation: text }).finish() },
+      { tag: "reactions", attrs: {}, content: reactions.map(([code, count]) => ({ tag: "reaction", attrs: { code, count: String(count) } })) },
+      { tag: "views_count", attrs: { count: String(views) } },
+    ],
+  });
+  const node = { tag: "iq", attrs: {}, content: [{ tag: "message_updates", attrs: {}, content: [{ tag: "messages", attrs: {}, content: [msg("חידה: מה עולה ויורד? 🤔", [["❤️", 5], ["😂", 2]], 120), msg("פוסט של מישהו אחר", [["👍", 1]], 50)] }] }] };
+  const posts = parseChannelPosts(node as never);
+  assert.deepEqual(posts, [{ text: "חידה: מה עולה ויורד? 🤔", reactions: 7, views: 120 }, { text: "פוסט של מישהו אחר", reactions: 1, views: 50 }]);
+
+  const store = new Store(":memory:");
+  const id = store.enqueue({ channelId: "c", payload: { kind: "text", text: "חידה: מה עולה ויורד?" }, now: 1 });
+  store.markSent(id, null, Date.UTC(2026, 10, 18), "2026-11-18");
+  assert.equal(recordChannelEngagement(store, "c", posts, Date.UTC(2026, 10, 19)), 1);
+  assert.deepEqual(store.kindPerformance("c", Date.UTC(2026, 10, 19)), { text: { n: 1, avg: 7, views: 120 } });
+});
+
+test("the bot writes more of the kind of post that gets reactions", async () => {
+  const config = makeConfig([{ id: "c", mode: "creative", formats: { text: 1, poll: 1, image: 0, video: 0 } }], { buffer: { min: 4, batch: 12 } });
+  const store = new Store(":memory:");
+  const now = Date.UTC(2026, 10, 19);
+  for (let i = 0; i < 6; i++) {
+    for (const [kind, reactions] of [["poll", 9], ["text", 1]] as const) {
+      const id = store.enqueue({ channelId: "c", payload: kind === "poll" ? { kind, text: "", pollQuestion: `q${i}`, pollOptions: ["a", "b"] } : { kind, text: `t${i}` }, normHash: `${kind}${i}`, now });
+      store.markSent(id, null, now - 3600_000, "2026-11-18");
+      store.recordEngagement(id, reactions, 10, now);
+    }
+  }
+  let asked: Record<string, number> = {};
+  const llm = { write: async (r: { counts: Record<string, number> }) => { asked = r.counts; return []; }, review: async () => [] };
+  await refillChannel({ store, llm: llm as never, settings: config.settings }, config.channels[0]!, now);
+  assert.ok((asked.poll ?? 0) >= 9, `asked for ${JSON.stringify(asked)}: polls should dominate`);
+});

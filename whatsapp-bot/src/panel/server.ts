@@ -31,6 +31,10 @@ export interface PanelApi {
   setGrowth(on: boolean): void;
   queue(channelId: string): unknown;
   pauseChannel(id: string, paused: boolean): string | null;
+  setApprove(id: string, on: boolean): string | null;
+  approve(id: number): string | null;
+  pending(channelId: string): unknown;
+  test(id: string): Promise<{ error?: string; results?: unknown }>;
   push(id: string, message: string): string | null;
   discard(id: number): string | null;
 }
@@ -108,6 +112,7 @@ export function startPanel(api: PanelApi, port: number): http.Server {
       const url = new URL(req.url ?? "/", "http://panel");
       if (req.method === "GET" && url.pathname === "/") return send(res, 200, PAGE, "text/html; charset=utf-8");
       if (req.method === "GET" && url.pathname === "/api/state") return send(res, 200, api.state());
+      if (req.method === "GET" && url.pathname === "/api/pending") return send(res, 200, api.pending(url.searchParams.get("channel") ?? ""));
       if (req.method === "GET" && url.pathname === "/api/queue") return send(res, 200, api.queue(url.searchParams.get("channel") ?? ""));
 
       if (req.method === "POST" && url.pathname.startsWith("/api/")) {
@@ -132,6 +137,16 @@ export function startPanel(api: PanelApi, port: number): http.Server {
             break;
           case "/api/pause":
             api.setPaused(body.paused === true);
+            break;
+          case "/api/test": {
+            const r = await api.test(String(body.id ?? ""));
+            return send(res, r.error ? 400 : 200, r);
+          }
+          case "/api/approve-mode":
+            error = api.setApprove(String(body.id ?? ""), body.on === true);
+            break;
+          case "/api/approve":
+            error = api.approve(Number(body.id));
             break;
           case "/api/channel-pause":
             error = api.pauseChannel(String(body.id ?? ""), body.paused === true);

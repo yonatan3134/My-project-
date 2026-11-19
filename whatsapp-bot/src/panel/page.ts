@@ -55,6 +55,12 @@ export const PAGE = `<!doctype html>
     <ul class="events" id="events" style="margin-top:12px"></ul>
   </section>
 
+  <section class="card" id="pendingCard" style="display:none">
+    <h2>✅ מחכים לאישור שלך</h2>
+    <p class="hint">בערוצים שבהם הפעלת "אישור לפני פרסום". ✅ = יפורסם בזמן הבא של הערוץ. 🗑 = נמחק.</p>
+    <div id="pending"></div>
+  </section>
+
   <section class="card">
     <h2>👀 הפוסטים הבאים</h2>
     <p class="hint">מה הבוט עומד לפרסם. פוסט שלא מתאים, מוחקים לפני שהוא יוצא.</p>
@@ -149,6 +155,7 @@ function render() {
     ["ערוצים פעילים", s.activeChannels + "/" + s.postingChannels],
     ["עוקבים בסך הכול", s.channels.reduce((a, c) => a + (c.followers || 0), 0).toLocaleString("he-IL")],
     ["קריאות AI היום", s.usage.calls],
+    ...(s.pendingTotal ? [["מחכים לאישור", s.pendingTotal]] : []),
   ].map(([t, v]) => '<div class="stat"><b>' + esc(v) + "</b><span>" + t + "</span></div>").join("");
   $("growthBtn").textContent = s.growth ? "✅ מצב צמיחה פועל · לכבות" : "🚀 להפעיל מצב צמיחה";
   $("growthBtn").className = s.growth ? "light" : "";
@@ -161,6 +168,8 @@ function render() {
   qSel.innerHTML = posting.map((c) => '<option value="' + esc(c.id) + '">' + esc(c.name) + " (" + c.ready + ")</option>").join("");
   if (keep && posting.some((c) => c.id === keep)) qSel.value = keep;
   if (!loadQueue.loaded) { loadQueue.loaded = true; loadQueue(); }
+  $("pendingCard").style.display = s.pendingTotal ? "" : "none";
+  if (s.pendingTotal && s.pendingTotal !== loadPending.last) { loadPending.last = s.pendingTotal; loadPending(); }
   $("events").innerHTML = s.problems.map((p) => "<li>" + esc(p) + "</li>").join("");
   $("keyState").innerHTML = s.hasKey ? pill(true, "שמור") : pill(false, "חסר");
   $("claudeState").innerHTML = s.hasClaude ? pill(true, "שמור") : "";
@@ -224,7 +233,9 @@ function renderChannels(list) {
       '<div class="grid3"><div><label>כל כמה פוסטים</label><input class="spE" type="number" min="2" placeholder="למשל 3" value="' + esc(sp.every ?? "") + '"></div></div>' +
       '<label>טקסט קבוע שיישלח כמו שהוא (למשל "תעקבו ותזמינו חברים!")</label><textarea class="spT">' + esc(sp.text ?? "") + "</textarea>" +
       '<label>או: הוראה ל-AI (למשל "חידה קשה במיוחד" או "סקר על הדמות הכי אהובה")</label><textarea class="spP">' + esc(sp.prompt ?? "") + "</textarea>" +
-      (live ? '<div class="row" style="margin-top:12px"><button class="push">📣 לדחוף את הערוץ בכל הערוצים</button></div>' : "") +
+      (live ? '<h3 style="font-size:15px;margin:14px 0 0">🛡️ אישור לפני פרסום</h3><label><input type="checkbox" class="appr" style="width:auto"' + (c.approve ? " checked" : "") + '> כל פוסט מחכה לאישור שלי באתר לפני שהוא יוצא</label>' : "") +
+      '<h3 style="font-size:15px;margin:14px 0 0">📈 מה עובד בערוץ</h3>' + perfHtml(c.perf) +
+      (live ? '<div class="row" style="margin-top:12px"><button class="push">📣 לדחוף את הערוץ בכל הערוצים</button><button class="light test">🧪 לשלוח 4 פוסטי בדיקה</button></div><div class="testres hint"></div>' : "") +
       "</details></div>";
   }).join("");
   document.querySelectorAll(".ch .del").forEach((b) => b.onclick = () => {
@@ -235,6 +246,23 @@ function renderChannels(list) {
     const id = b.closest(".ch").dataset.id, c = S.channels.find((x) => x.id === id);
     try { await post("/api/channel-pause", { id, paused: !c.paused }); c.paused = !c.paused; b.textContent = c.paused ? "⏸ עצור" : "▶️ פועל"; toast(c.paused ? "הערוץ נעצר" : "הערוץ פועל"); } catch (e) { toast(e.message); }
   });
+  document.querySelectorAll(".ch .appr").forEach((b) => b.onchange = async () => {
+    const id = b.closest(".ch").dataset.id;
+    try { await post("/api/approve-mode", { id, on: b.checked }); toast(b.checked ? "מעכשיו כל פוסט בערוץ מחכה לאישור שלך" : "הערוץ מפרסם לבד"); } catch (e) { toast(e.message); b.checked = !b.checked; }
+  });
+  document.querySelectorAll(".ch .test").forEach((b) => b.onclick = async () => {
+    const box = b.closest(".ch"), out = box.querySelector(".testres");
+    if (!confirm("לשלוח עכשיו 4 הודעות בדיקה (טקסט, סקר, תמונה, סרטון) לערוץ הזה? העוקבים יראו אותן.")) return;
+    b.disabled = true; out.textContent = "שולח... (עד דקה)";
+    try {
+      const r = await fetch("/api/test", { method:"POST", headers:{ "Content-Type":"application/json", "X-Panel":"1" }, body: JSON.stringify({ id: box.dataset.id }) });
+      const j = await r.json();
+      out.innerHTML = j.error ? '<span style="color:var(--bad)">' + esc(j.error) + "</span>" :
+        j.results.map((x) => (x.ok ? "✅ " : "❌ ") + esc(x.kind) + (x.ok ? "" : " – " + esc(x.error || ""))).join("<br>") +
+        "<br>עכשיו פותחים את הערוץ בטלפון ובודקים מה באמת הופיע. מה שסומן ✅ ולא מופיע, וואטסאפ לא הציגה.";
+    } catch (e) { out.textContent = e.message; }
+    b.disabled = false;
+  });
   document.querySelectorAll(".ch .push").forEach((b) => b.onclick = async () => {
     const id = b.closest(".ch").dataset.id, c = S.channels.find((x) => x.id === id);
     const msg = prompt("📣 הודעה שתישלח בכל הערוצים האחרים עם קישור ל-" + c.name + "\\n(להשאיר ריק להודעה מוכנה)", "");
@@ -242,6 +270,14 @@ function renderChannels(list) {
     try { await post("/api/push", { id, message: msg }); toast("📣 נשלח לתור. ההודעות ייצאו אחת-אחת ב-20 הדקות הקרובות"); } catch (e) { toast(e.message); }
   });
   document.querySelectorAll(".ch input, .ch select, .ch textarea").forEach((el) => el.addEventListener("input", () => editing = true));
+}
+
+const KIND_NAMES = { text:"טקסט", poll:"סקר", image:"תמונה", video:"סרטון" };
+function perfHtml(perf) {
+  const rows = Object.entries(perf || {}).filter(([, p]) => p && p.n > 0).sort((a, b) => b[1].avg - a[1].avg);
+  if (!rows.length) return '<p class="hint" style="margin:4px 0">עוד אין נתונים. הבוט בודק כל 3 שעות כמה תגובות וצפיות קיבל כל פוסט.</p>';
+  return '<p class="hint" style="margin:4px 0">ממוצע תגובות לפוסט ב-30 הימים האחרונים. הבוט כותב יותר ממה שמצליח.</p>' +
+    rows.map(([k, p]) => '<div class="hint">' + (KIND_NAMES[k] || k) + ": ❤️ " + p.avg.toFixed(1) + " · 👁 " + Math.round(p.views) + " (" + p.n + " פוסטים)</div>").join("");
 }
 
 function collectChannels() {
@@ -326,6 +362,22 @@ async function loadQueue() {
 }
 $("qCh").onchange = loadQueue;
 
+async function loadPending() {
+  try {
+    const list = await (await fetch("/api/pending", { cache:"no-store" })).json();
+    $("pending").innerHTML = list.map((p) =>
+      '<div class="post"><div class="t">' + esc(p.text) + "<small>" + esc(p.channel) + (p.special ? " · ⭐ מיוחדת" : "") + "</small></div>" +
+      '<button class="light ok" data-id="' + p.id + '" title="לאשר" style="padding:6px 10px">✅</button>' +
+      '<button class="danger no" data-id="' + p.id + '" title="למחוק">🗑</button></div>').join("") || '<p class="hint">אין</p>';
+    document.querySelectorAll("#pending .ok").forEach((b) => b.onclick = async () => {
+      try { await post("/api/approve", { id: Number(b.dataset.id) }); b.closest(".post").remove(); toast("אושר ✅"); } catch (e) { toast(e.message); }
+    });
+    document.querySelectorAll("#pending .no").forEach((b) => b.onclick = async () => {
+      try { await post("/api/discard", { id: Number(b.dataset.id) }); b.closest(".post").remove(); toast("נמחק"); } catch (e) { toast(e.message); }
+    });
+  } catch { }
+}
+
 async function load() {
   try {
     const r = await fetch("/api/state", { cache:"no-store" });
@@ -336,6 +388,7 @@ async function load() {
 load();
 setInterval(() => { if (!editing || (S && (S.linking || S.pairingCode))) load(); }, 4000);
 setInterval(loadQueue, 30000);
+setInterval(() => { if (S && S.pendingTotal) loadPending(); }, 30000);
 </script>
 </body>
 </html>`;
