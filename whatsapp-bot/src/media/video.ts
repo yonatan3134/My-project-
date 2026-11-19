@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
+import { loadSharp } from "./img.js";
 import { TMP_DIR } from "../paths.js";
 
 export interface VideoClip {
@@ -10,6 +10,7 @@ export interface VideoClip {
   seconds: number;
   width: number;
   height: number;
+  captionExtra?: string;
 }
 
 function run(cmd: string, args: string[], timeoutMs: number): Promise<{ code: number; stderr: string }> {
@@ -52,6 +53,7 @@ async function tmpFile(name: string): Promise<string> {
 }
 
 async function thumbnailOf(jpegOrPng: Buffer): Promise<string> {
+  const sharp = await loadSharp();
   return (await sharp(jpegOrPng).resize(96, 96, { fit: "cover" }).jpeg({ quality: 55 }).toBuffer()).toString("base64");
 }
 

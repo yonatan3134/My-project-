@@ -294,7 +294,9 @@ export class Scheduler {
         this.d.store.event(now, "warn", "media_build_failed", (err as Error).message, channel.id);
       }
       if (built) {
-        const res = "image" in built ? await sender.image(jid, built.image, p.text) : await sender.video(jid, built.video, p.text);
+        const media = "image" in built ? built.image : built.video;
+        const caption = [media.captionExtra ? `*${media.captionExtra}*` : "", p.text].filter(Boolean).join("\n\n");
+        const res = "image" in built ? await sender.image(jid, built.image, caption) : await sender.video(jid, built.video, caption);
         if (res.ok || res.uncertain || res.error === "not connected") return { ...res, sentAs: p.kind };
         this.noteCapability("media", false, now, res.error);
         this.d.store.event(now, "warn", "media_failed", res.error ?? "", channel.id);

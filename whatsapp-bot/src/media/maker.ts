@@ -52,7 +52,7 @@ export class DefaultMedia implements MediaMaker {
   async video(p: PostPayload, channel: ChannelConfig, seed: string): Promise<VideoClip> {
     // an AI picture with a slow zoom makes a short clip at no extra cost
     const ai = await this.aiCard(p, channel);
-    if (ai) return videoFromCard(ai.jpeg);
+    if (ai) return { ...(await videoFromCard(ai.jpeg)), ...(ai.captionExtra ? { captionExtra: ai.captionExtra } : {}) };
     const text = p.cardText ?? p.text;
     if (this.pexelsKey && p.visualQuery) {
       let stockPath: string | null = null;
