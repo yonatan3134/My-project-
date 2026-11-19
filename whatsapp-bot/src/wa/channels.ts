@@ -98,29 +98,56 @@ function collectMessages(node: BinaryNode, out: BinaryNode[]): void {
  * tone. Best effort: returns an empty list when WhatsApp's answer has a
  * shape this code does not recognise.
  */
-export async function recentPostTexts(sock: WASocket, jid: string, count = 30): Promise<string[]> {
-  const result = (await sock.newsletterFetchMessages(jid, count, 0, 0)) as BinaryNode;
+export interface ChannelPost {
+  text: string;
+  reactions: number;
+  views: number;
+}
+
+/**
+ * Reads a channel's recent posts as WhatsApp returns them: the text (or poll
+ * question / caption), the total number of emoji reactions and the view count.
+ * Best effort: fields WhatsApp does not send count as 0.
+ */
+export function parseChannelPosts(result: BinaryNode): ChannelPost[] {
   const nodes: BinaryNode[] = [];
   collectMessages(result, nodes);
-  const texts: string[] = [];
+  const out: ChannelPost[] = [];
   for (const node of nodes) {
     const plain = getBinaryNodeChild(node, "plaintext");
     if (!plain?.content || !(plain.content instanceof Uint8Array)) continue;
+    let text = "";
     try {
       const msg = normalizeMessageContent(proto.Message.decode(plain.content));
-      const text =
+      text = (
         msg?.conversation ??
         msg?.extendedTextMessage?.text ??
         msg?.imageMessage?.caption ??
         msg?.videoMessage?.caption ??
         msg?.pollCreationMessageV3?.name ??
         msg?.pollCreationMessage?.name ??
-        "";
-      const clean = text.trim();
-      if (clean.length >= 8 && clean.length <= 700 && !/https?:\/\//i.test(clean)) texts.push(clean);
+        ""
+      ).trim();
     } catch {
-      // skip messages that cannot be decoded
+      continue;
     }
+    let reactions = 0;
+    for (const r of getAllBinaryNodeChildren(getBinaryNodeChild(node, "reactions") ?? { tag: "", attrs: {} })) {
+      reactions += Number(r.attrs.count ?? 0) || 0;
+    }
+    const views = Number(getBinaryNodeChild(node, "views_count")?.attrs.count ?? 0) || 0;
+    out.push({ text, reactions, views });
   }
+  return out;
+}
+
+export async function fetchChannelPosts(sock: WASocket, jid: string, count = 50): Promise<ChannelPost[]> {
+  return parseChannelPosts((await sock.newsletterFetchMessages(jid, count, 0, 0)) as BinaryNode);
+}
+
+export async function recentPostTexts(sock: WASocket, jid: string, count = 30): Promise<string[]> {
+  const texts = (await fetchChannelPosts(sock, jid, count))
+    .map((p) => p.text)
+    .filter((t) => t.length >= 8 && t.length <= 700 && !/https?:\/\//i.test(t));
   return [...new Set(texts)];
 }

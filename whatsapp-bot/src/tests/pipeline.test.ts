@@ -291,3 +291,17 @@ test("a channel's own rhythm replaces the general one", async () => {
   const n = sentRows(store).filter((r) => !r.is_followup).length;
   assert.ok(n >= 11 && n <= 13, `${n} posts in two days (expected about 12: one every 4 hours)`);
 });
+
+test("approval mode: nothing goes out until approved; approved posts go out on schedule", async () => {
+  const config = makeConfig([{ id: "a", mode: "creative", formats: { text: 1, poll: 0, image: 0, video: 0 } }]);
+  const store = new Store(":memory:");
+  store.set("approve:a", "1");
+  const sender = new ScriptedSender();
+  await simulate({ config, days: 1, start: START, sender, store });
+  assert.equal(sender.log.length, 0, "sent without approval");
+  const pending = store.pendingList("a", 50);
+  assert.ok(pending.length >= 4 && pending.length <= 12, `${pending.length} waiting (the bot must not keep writing)`);
+  for (const p of pending.slice(0, 2)) assert.equal(store.approve(p.id, START), true);
+  await simulate({ config, days: 1, start: START + DAY, sender, store });
+  assert.equal(sender.log.filter((s) => !s.body.startsWith("התשובה")).length, 2, "exactly the two approved posts");
+});

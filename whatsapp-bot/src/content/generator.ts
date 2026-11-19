@@ -139,7 +139,7 @@ async function refillSefaria(ctx: GenContext, channel: ChannelConfig, now: numbe
     const text = `📖 *${data.heRef}, ${hebrewNumeral(index + 1)}*\n\n${segment}`;
     const payload: PostPayload = { kind: "text", text };
     const cand = candidateOf(payload, `${cfg.book} ${chapter}:${index + 1}`);
-    ctx.store.enqueue({ channelId: channel.id, group: channel.group, payload, topicKey: cand.topicKey, normText: cand.normText, normHash: cand.normHash, now });
+    ctx.store.enqueue({ channelId: channel.id, group: channel.group, payload, topicKey: cand.topicKey, normText: cand.normText, normHash: cand.normHash, pending: needsApproval(ctx, channel), now });
     ctx.store.set(posKey, `${chapter}:${index + 1}`);
     ctx.store.set(dayMark, day);
     ctx.store.set(countMark, String(done + 1));
@@ -184,7 +184,7 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
     const room = Math.min(mode === "news" ? perDay - waiting : FANDOM_NEWS_WAITING - waiting, perDay - sentToday - waiting);
     sources = store.newSourceItems(channel.id, Math.min(MAX_SOURCES_PER_CALL, room), now - NEWS_MAX_AGE_MS);
   }
-  const ready = store.readyCount(channel.id);
+  const ready = store.bufferCount(channel.id);
 
   if (mode === "news") {
     if (sources.length === 0) return result;
@@ -196,6 +196,16 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
   const formats = { ...formatsFor(channel, settings) };
   // polls get the most interaction of any post type, so growth mode leans on them
   if (growth && formats.poll > 0) formats.poll = Math.round(formats.poll * 1.5 * 10) / 10;
+  // write more of what gets reactions in this channel (needs a few measured posts of a kind first)
+  const perf = store.kindPerformance(channel.id, now);
+  const measured = Object.values(perf).filter((p) => p && p.n >= 5);
+  if (measured.length >= 2) {
+    const overall = measured.reduce((a, p) => a + p!.avg * p!.n, 0) / measured.reduce((a, p) => a + p!.n, 0);
+    for (const kind of KINDS) {
+      const p = perf[kind];
+      if (p && p.n >= 5 && formats[kind] > 0 && overall > 0) formats[kind] *= Math.min(2, Math.max(0.5, p.avg / overall));
+    }
+  }
   if (ctx.videoAvailable === false) {
     formats.image += formats.video;
     formats.video = 0;
@@ -284,6 +294,7 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
   for (const k of approved) {
     const src = k.draft.source_index >= 0 ? sources[k.draft.source_index] : undefined;
     store.enqueue({
+      pending: needsApproval(ctx, channel),
       channelId: channel.id,
       group: channel.group,
       payload: k.payload,
@@ -355,12 +366,17 @@ async function refillSpecial(ctx: GenContext, channel: ChannelConfig, mode: "cre
       result.rejected.push(`review: ${v?.reason || "no verdict"}`);
       return result;
     }
-    store.enqueue({ channelId: channel.id, group: channel.group, payload: k.payload, topicKey: k.cand.topicKey, normText: k.cand.normText, normHash: k.cand.normHash, special: true, now });
+    store.enqueue({ channelId: channel.id, group: channel.group, payload: k.payload, topicKey: k.cand.topicKey, normText: k.cand.normText, normHash: k.cand.normHash, special: true, pending: needsApproval(ctx, channel), now });
     result.queued++;
   } catch (err) {
     return failed(ctx, channel, now, result, err);
   }
   return result;
+}
+
+/** The owner switched on "approve before posting" for this channel on the website. */
+export function needsApproval(ctx: GenContext, channel: ChannelConfig): boolean {
+  return ctx.store.get(`approve:${channel.id}`) === "1";
 }
 
 function failed(ctx: GenContext, channel: ChannelConfig, now: number, result: RefillResult, err: unknown): RefillResult {

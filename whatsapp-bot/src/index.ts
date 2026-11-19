@@ -16,7 +16,9 @@ import { updateEnvFile } from "./panel/envfile.js";
 import { startPanel } from "./panel/server.js";
 import { Scheduler, dailyCap, postingChannels } from "./scheduler.js";
 import { HOUR, MINUTE, dayKey, sleep } from "./time.js";
-import { recentPostTexts, resolveChannels } from "./wa/channels.js";
+import { canPost, fetchChannelPosts, recentPostTexts, resolveChannels } from "./wa/channels.js";
+import { recordChannelEngagement } from "./engagement.js";
+import { renderCard } from "./media/cards.js";
 import { WaClient } from "./wa/client.js";
 import { DryRunSender, WaSender, type Sender } from "./wa/sender.js";
 
@@ -102,11 +104,12 @@ async function main(): Promise<void> {
     (m) => store.event(now(), "warn", "ai_image", m),
   );
 
+  const media = new DefaultMedia(env.pexelsKey, (m) => store.event(now(), "info", "media_note", m), aiImages);
   const scheduler = new Scheduler({
     store,
     config,
     sender,
-    media: new DefaultMedia(env.pexelsKey, (m) => store.event(now(), "info", "media_note", m), aiImages),
+    media,
     now,
     isConnected: () => (client ? client.isOpen : env.dryRun),
   });
@@ -199,7 +202,28 @@ async function main(): Promise<void> {
     }
   }
 
+  /** Every 3 hours: reactions and views of the bot's recent posts, so the bot learns what works. */
+  async function syncEngagement(): Promise<void> {
+    const sock = client?.sock;
+    if (!client?.isOpen || !sock) return;
+    if (now() - (store.getNumber("engagement_at") ?? 0) < 3 * HOUR) return;
+    store.set("engagement_at", String(now()));
+    let matched = 0;
+    for (const c of postingChannels(config.channels)) {
+      const st = store.channel(c.id);
+      if (!st.jid || !client.isOpen) continue;
+      try {
+        matched += recordChannelEngagement(store, c.id, await fetchChannelPosts(sock, st.jid, 50), now());
+      } catch (err) {
+        store.event(now(), "info", "engagement_fetch_failed", (err as Error).message, c.id);
+      }
+      await sleep(1500);
+    }
+    logger.info({ matched }, "engagement updated");
+  }
+
   async function housekeeping(): Promise<void> {
+    await syncEngagement();
     store.prune(now(), settings.dedup.lookback * 2);
     store.expireStaleNews(now(), 36 * HOUR);
     await syncChannels(24 * HOUR);
@@ -265,6 +289,7 @@ async function main(): Promise<void> {
             ntfyTopic: env.ntfyTopic ?? "",
             paused: scheduler.isPaused(),
             defaultCycle: settings.cycle,
+            pendingTotal: store.pendingCount(),
             growth: scheduler.growth(),
             hasClaude: env.hasAnthropicKey,
             models: llm instanceof FallbackLLM
@@ -285,6 +310,8 @@ async function main(): Promise<void> {
                 role: st.role, sentToday: perChannel.get(c.id) ?? 0, ready: store.readyCount(c.id), followers: f.count, followersWeek: f.week,
                 paused: st.paused === 1, maxPerDay: c.maxPerDay ?? null, cycle: c.cycle ?? null, special: c.special ?? null,
                 cap: dailyCap(c, settings, st.activated_at, now()),
+                approve: store.get(`approve:${c.id}`) === "1",
+                perf: store.kindPerformance(c.id, now()),
               };
             }),
           };
@@ -400,6 +427,39 @@ async function main(): Promise<void> {
           const r = scheduler.pushChannel(target, now(), message);
           if (typeof r === "string") return r;
           return r === 0 ? "אין ערוצים אחרים שהבוט מנהל בהם" : null;
+        },
+        setApprove: (id, on) => {
+          if (!config.channels.some((c) => c.id === id)) return "ערוץ לא קיים";
+          store.set(`approve:${id}`, on ? "1" : "0");
+          if (on) store.holdReady(id, now());
+          else store.approveAll(id, now());
+          return null;
+        },
+        approve: (id) => (store.approve(id, now()) ? null : "הפוסט כבר לא מחכה לאישור"),
+        pending: (channelId) => store.pendingList(channelId || null, 50).map((r) => ({ id: r.id, channel: config.channels.find((c) => c.id === r.channel_id)?.name ?? r.channel_id, kind: r.kind, text: preview(r.payload), special: r.special === 1 })),
+        test: async (id) => {
+          const c = config.channels.find((x) => x.id === id);
+          if (!c) return { error: "ערוץ לא קיים" };
+          const st = store.channel(c.id);
+          if (!env.dryRun && !client?.isOpen) return { error: "הבוט לא מחובר לוואטסאפ" };
+          if (!st.jid) return { error: "הערוץ עוד לא נמצא בוואטסאפ. מחכים דקה אחרי החיבור" };
+          if (!canPost(st.role)) return { error: `הבוט לא מנהל בערוץ (${st.role})` };
+          const results: { kind: string; ok: boolean; error?: string }[] = [];
+          const run = async (kind: string, fn: () => Promise<{ ok: boolean; error?: string }>) => {
+            try {
+              const r = await fn();
+              results.push({ kind, ok: r.ok, error: r.error });
+            } catch (err) {
+              results.push({ kind, ok: false, error: (err as Error).message });
+            }
+            await sleep(4000);
+          };
+          await run("טקסט", () => sender.text(st.jid!, "🤖 בדיקה 1/4: הודעת טקסט מהבוט"));
+          await run("סקר", () => sender.poll(st.jid!, "🤖 בדיקה 2/4: הסקר הזה מופיע אצלכם?", ["כן", "לא"]));
+          await run("תמונה", async () => sender.image(st.jid!, await renderCard({ text: "בדיקה 3/4\nתמונה מהבוט 🖼️", footer: c.name, seed: "test" }), "🤖 בדיקה 3/4: תמונה"));
+          await run("סרטון", async () => sender.video(st.jid!, await media.video({ kind: "video", text: "", cardText: "בדיקה 4/4\nסרטון מהבוט 🎬" }, c, "test-video"), "🤖 בדיקה 4/4: סרטון"));
+          store.event(now(), "info", "test_posts", results.map((r) => `${r.kind}:${r.ok ? "ok" : r.error}`).join(" | "), c.id);
+          return { results };
         },
         queue: (channelId) => store.readyList(channelId, 20).map((r) => ({ id: r.id, kind: r.kind, text: preview(r.payload) })),
         discard: (id) => (store.discardOne(id, now()) ? null : "הפוסט כבר לא בתור"),

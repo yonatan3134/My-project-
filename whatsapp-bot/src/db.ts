@@ -21,7 +21,7 @@ export interface PostPayload {
   followup?: string;
 }
 
-export type QueueStatus = "ready" | "sending" | "sent" | "failed" | "discarded" | "unknown";
+export type QueueStatus = "pending" | "ready" | "sending" | "sent" | "failed" | "discarded" | "unknown";
 
 export interface QueueRow {
   id: number;
@@ -148,6 +148,13 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
 
+CREATE TABLE IF NOT EXISTS engagement (
+  queue_id INTEGER PRIMARY KEY,
+  reactions INTEGER NOT NULL DEFAULT 0,
+  views INTEGER NOT NULL DEFAULT 0,
+  checked_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS followers (
   channel_id TEXT NOT NULL,
   day TEXT NOT NULL,
@@ -164,7 +171,7 @@ CREATE TABLE IF NOT EXISTS usage (
 `;
 
 /** Statuses that count as "already used" when looking for repeats. A post the owner threw away is not written again either. */
-const HISTORY_STATUSES = "('ready','sending','sent','unknown','discarded')";
+const HISTORY_STATUSES = "('pending','ready','sending','sent','unknown','discarded')";
 
 interface RawQueueRow extends Omit<QueueRow, "payload"> {
   payload: string;
@@ -248,12 +255,14 @@ export class Store {
     isFollowup?: boolean;
     sourceItemId?: number | null;
     special?: boolean;
+    /** waits for the owner's approval on the website before it can be sent */
+    pending?: boolean;
     now: number;
   }): number {
     const info = this.db
       .prepare(
-        `INSERT INTO queue (channel_id, grp, kind, payload, topic_key, norm_text, norm_hash, not_before, is_followup, source_item_id, special, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO queue (channel_id, grp, kind, payload, topic_key, norm_text, norm_hash, not_before, is_followup, source_item_id, special, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         row.channelId,
@@ -267,6 +276,7 @@ export class Store {
         row.isFollowup ? 1 : 0,
         row.sourceItemId ?? null,
         row.special ? 1 : 0,
+        row.pending ? "pending" : "ready",
         row.now,
         row.now,
       );
@@ -419,6 +429,7 @@ export class Store {
       )
       .run(keepPerChannel);
     this.q("DELETE FROM events WHERE ts < ?").run(now - 14 * 24 * 3600_000);
+    this.q("DELETE FROM engagement WHERE queue_id NOT IN (SELECT id FROM queue)").run();
     this.q("DELETE FROM followers WHERE day < ?").run(new Date(now - 120 * 24 * 3600_000).toISOString().slice(0, 10));
     this.q("DELETE FROM source_items WHERE fetched_at < ?").run(now - 30 * 24 * 3600_000);
   }
@@ -440,7 +451,68 @@ export class Store {
 
   /** Throws away one waiting post. It still counts as used, so the same idea is not written again. */
   discardOne(id: number, now: number): boolean {
-    return this.q("UPDATE queue SET status = 'discarded', updated_at = ? WHERE id = ? AND status = 'ready'").run(now, id).changes === 1;
+    return this.q("UPDATE queue SET status = 'discarded', updated_at = ? WHERE id = ? AND status IN ('ready','pending')").run(now, id).changes === 1;
+  }
+
+  // ---- approval ---------------------------------------------------------
+
+  /** Posts the generator has made that are not sent yet (waiting in the queue or for approval). */
+  bufferCount(channelId: string): number {
+    return (this.q("SELECT COUNT(*) AS n FROM queue WHERE channel_id = ? AND status IN ('ready','pending') AND is_followup = 0 AND special = 0").get(channelId) as { n: number }).n;
+  }
+
+  pendingList(channelId: string | null, limit: number): { id: number; channel_id: string; kind: string; payload: PostPayload; special: number }[] {
+    const rows = (channelId
+      ? this.q("SELECT id, channel_id, kind, payload, special FROM queue WHERE status = 'pending' AND channel_id = ? ORDER BY id LIMIT ?").all(channelId, limit)
+      : this.q("SELECT id, channel_id, kind, payload, special FROM queue WHERE status = 'pending' ORDER BY id LIMIT ?").all(limit)) as {
+      id: number; channel_id: string; kind: string; payload: string; special: number;
+    }[];
+    return rows.map((r) => ({ ...r, payload: JSON.parse(r.payload) as PostPayload }));
+  }
+
+  pendingCount(): number {
+    return (this.q("SELECT COUNT(*) AS n FROM queue WHERE status = 'pending'").get() as { n: number }).n;
+  }
+
+  approve(id: number, now: number): boolean {
+    return this.q("UPDATE queue SET status = 'ready', updated_at = ? WHERE id = ? AND status = 'pending'").run(now, id).changes === 1;
+  }
+
+  /** Approval switched on: posts already waiting in the queue also wait for approval. */
+  holdReady(channelId: string, now: number): number {
+    return this.q("UPDATE queue SET status = 'pending', updated_at = ? WHERE channel_id = ? AND status = 'ready' AND is_followup = 0").run(now, channelId).changes;
+  }
+
+  /** Approval switched off: everything waiting may go out. */
+  approveAll(channelId: string, now: number): number {
+    return this.q("UPDATE queue SET status = 'ready', updated_at = ? WHERE channel_id = ? AND status = 'pending'").run(now, channelId).changes;
+  }
+
+  // ---- engagement ---------------------------------------------------------
+
+  /** Sent posts of a channel from the last days, newest first, to match against what WhatsApp reports. */
+  sentForMatching(channelId: string, since: number): { id: number; kind: string; payload: PostPayload }[] {
+    const rows = this.q("SELECT id, kind, payload FROM queue WHERE channel_id = ? AND status = 'sent' AND is_followup = 0 AND sent_at >= ? ORDER BY sent_at DESC LIMIT 200").all(channelId, since) as {
+      id: number; kind: string; payload: string;
+    }[];
+    return rows.map((r) => ({ ...r, payload: JSON.parse(r.payload) as PostPayload }));
+  }
+
+  recordEngagement(queueId: number, reactions: number, views: number, now: number): void {
+    this.q(
+      "INSERT INTO engagement (queue_id, reactions, views, checked_at) VALUES (?, ?, ?, ?) ON CONFLICT(queue_id) DO UPDATE SET reactions = excluded.reactions, views = excluded.views, checked_at = excluded.checked_at",
+    ).run(queueId, reactions, views, now);
+  }
+
+  /** Average reactions per post of each kind in a channel over the last 30 days. */
+  kindPerformance(channelId: string, now: number): Partial<Record<PostKind, { n: number; avg: number; views: number }>> {
+    const rows = this.q(
+      `SELECT q.kind AS kind, COUNT(*) AS n, AVG(e.reactions) AS avg, AVG(e.views) AS views FROM engagement e JOIN queue q ON q.id = e.queue_id
+       WHERE q.channel_id = ? AND q.sent_at >= ? GROUP BY q.kind`,
+    ).all(channelId, now - 30 * 24 * 3600_000) as { kind: PostKind; n: number; avg: number; views: number }[];
+    const out: Partial<Record<PostKind, { n: number; avg: number; views: number }>> = {};
+    for (const r of rows) out[r.kind] = { n: r.n, avg: r.avg, views: r.views };
+    return out;
   }
 
   // ---- followers ----------------------------------------------------------
