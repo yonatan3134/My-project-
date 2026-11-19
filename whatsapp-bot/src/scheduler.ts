@@ -216,11 +216,11 @@ export class Scheduler {
       const channel = byId.get(row.channel_id);
       const state = store.channel(row.channel_id);
       const stale = now - row.not_before > 3 * HOUR;
-      if (!channel || !channel.enabled || !state.jid || !canPost(state.role) || state.paused || stale) {
+      if (!channel || !channel.enabled || !state.jid || !canPost(state.role) || (state.paused && !row.manual) || stale) {
         store.markStatus(row.id, "discarded", now);
         continue;
       }
-      if (inQuietHours(this.s, now, this.growth())) continue;
+      if (!row.manual && inQuietHours(this.s, now, this.growth())) continue;
       await this.publish(row, channel, state.jid, now);
       return true;
     }
@@ -329,10 +329,11 @@ export class Scheduler {
       }
       if (res.sentAs === "poll") this.noteCapability("poll", true, now);
       if (res.sentAs === "image" || res.sentAs === "video") this.noteCapability("media", true, now);
-      if (row.payload.followup && !row.is_followup) {
+      // a riddle's answer follows it, also when the riddle was sent with "send now"
+      if (row.payload.followup) {
         const [lo, hi] = this.s.followupDelayMinutes;
         const delay = (Math.min(lo, hi) + this.rand() * Math.abs(hi - lo)) * MINUTE;
-        store.enqueue({ channelId: channel.id, payload: { kind: "text", text: row.payload.followup }, notBefore: now + delay, isFollowup: true, now });
+        store.enqueue({ channelId: channel.id, payload: { kind: "text", text: row.payload.followup }, notBefore: now + delay, isFollowup: true, manual: row.manual === 1, now });
       }
       if (res.sentAs === "poll" && !row.is_followup) this.maybeInvade(channel, now);
       if (!row.is_followup && this.growth()) this.maybePromote(channel, now);

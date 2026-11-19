@@ -64,7 +64,7 @@ export const PAGE = `<!doctype html>
   <section class="card">
     <h2>👀 הפוסטים הבאים</h2>
     <p class="hint">מה הבוט עומד לפרסם. פוסט שלא מתאים, מוחקים לפני שהוא יוצא.</p>
-    <select id="qCh"></select>
+    <div class="row"><select id="qCh" style="flex:1"></select><button class="light" id="flushBtn">🚀 לשלוח עכשיו את כל התור</button></div>
     <div id="queue" style="margin-top:10px"></div>
   </section>
 
@@ -236,6 +236,7 @@ function renderChannels(list) {
       '<label>או: הוראה ל-AI (למשל "חידה קשה במיוחד" או "סקר על הדמות הכי אהובה")</label><textarea class="spP">' + esc(sp.prompt ?? "") + "</textarea>" +
       (live ? '<h3 style="font-size:15px;margin:14px 0 0">🛡️ אישור לפני פרסום</h3><label><input type="checkbox" class="appr" style="width:auto"' + (c.approve ? " checked" : "") + '> כל פוסט מחכה לאישור שלי באתר לפני שהוא יוצא</label>' : "") +
       '<h3 style="font-size:15px;margin:14px 0 0">📈 מה עובד בערוץ</h3>' + perfHtml(c.perf) +
+      (live ? '<h3 style="font-size:15px;margin:14px 0 0">⚡ לשלוח עכשיו</h3><div class="row"><input class="nowp" value="חידה" style="flex:1;min-width:140px" placeholder="מה לשלוח, למשל: חידה / סקר / בדיחה"><button class="sendnow">⚡ שלח עכשיו</button></div><div class="nowres hint"></div>' : "") +
       (live ? '<div class="row" style="margin-top:12px"><button class="push">📣 לדחוף את הערוץ בכל הערוצים</button><button class="light test">🧪 לשלוח 4 פוסטי בדיקה</button></div><div class="testres hint"></div>' : "") +
       "</details></div>";
   }).join("");
@@ -261,6 +262,16 @@ function renderChannels(list) {
       out.innerHTML = j.error ? '<span style="color:var(--bad)">' + esc(j.error) + "</span>" :
         j.results.map((x) => (x.ok ? "✅ " : "❌ ") + esc(x.kind) + (x.ok ? "" : " – " + esc(x.error || ""))).join("<br>") +
         "<br>עכשיו פותחים את הערוץ בטלפון ובודקים מה באמת הופיע. מה שסומן ✅ ולא מופיע, וואטסאפ לא הציגה.";
+    } catch (e) { out.textContent = e.message; }
+    b.disabled = false;
+  });
+  document.querySelectorAll(".ch .sendnow").forEach((b) => b.onclick = async () => {
+    const box = b.closest(".ch"), out = box.querySelector(".nowres");
+    b.disabled = true; out.textContent = "ה-AI כותב... (עד חצי דקה)";
+    try {
+      const r = await fetch("/api/send-now", { method:"POST", headers:{ "Content-Type":"application/json", "X-Panel":"1" }, body: JSON.stringify({ id: box.dataset.id, prompt: box.querySelector(".nowp").value }) });
+      const j = await r.json();
+      out.innerHTML = j.error ? '<span style="color:var(--bad)">' + esc(j.error) + "</span>" : "✅ יוצא לערוץ תוך דקה: " + esc(j.text);
     } catch (e) { out.textContent = e.message; }
     b.disabled = false;
   });
@@ -363,6 +374,11 @@ async function loadQueue() {
   } catch { $("queue").innerHTML = '<p class="hint">לא הצלחתי לטעון</p>'; }
 }
 $("qCh").onchange = loadQueue;
+$("flushBtn").onclick = async () => {
+  const id = $("qCh").value, c = S.channels.find((x) => x.id === id);
+  if (!id || !confirm("לשלוח עכשיו את כל " + (c ? c.ready : "") + " הפוסטים שבתור של " + (c ? c.name : "") + "? הם ייצאו אחד אחרי השני, בהפרש של חצי דקה עד דקה.")) return;
+  try { await post("/api/flush", { id }); toast("🚀 התור בדרך לערוץ"); setTimeout(loadQueue, 1500); } catch (e) { toast(e.message); }
+};
 
 async function loadPending() {
   try {

@@ -335,11 +335,20 @@ export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now
   return result;
 }
 
-async function refillSpecial(ctx: GenContext, channel: ChannelConfig, mode: "creative" | "fandom" | "news", now: number): Promise<RefillResult> {
+/**
+ * Writes one post from the owner's instruction, checks it for repeats and
+ * runs the second opinion. Used for special posts and for "send now".
+ */
+async function writeOne(
+  ctx: GenContext,
+  channel: ChannelConfig,
+  mode: "creative" | "fandom" | "news",
+  prompt: string,
+  now: number,
+): Promise<{ payload: PostPayload; cand: Candidate } | RefillResult> {
   const result: RefillResult = { queued: 0, rejected: [] };
   const { store, settings } = ctx;
-  const prompt = channel.special?.prompt.trim() ?? "";
-  // a special post is written freely from the owner's instruction, never as a news report
+  // written freely from the owner's instruction, never as a news report
   const writeMode = mode === "news" ? "creative" : mode;
   let drafts: Draft[];
   try {
@@ -356,7 +365,7 @@ async function refillSpecial(ctx: GenContext, channel: ChannelConfig, mode: "cre
     return failed(ctx, channel, now, result, err);
   }
   const index = new DedupIndex(store.recentForDedup(channel.id, null, settings.dedup.lookback), settings.dedup);
-  const kept: { payload: PostPayload; cand: Candidate }[] = [];
+  let kept: { payload: PostPayload; cand: Candidate } | null = null;
   for (const d of drafts.slice(0, 1)) {
     const r = draftToPayload({ ...d, source_index: -1 }, writeMode, 0);
     if ("reject" in r) {
@@ -366,11 +375,11 @@ async function refillSpecial(ctx: GenContext, channel: ChannelConfig, mode: "cre
     const cand = candidateOf(r.payload, d.topic_key);
     const why = index.check(cand);
     if (why) result.rejected.push(`repeat: ${why}`);
-    else kept.push({ payload: r.payload, cand });
+    else kept = { payload: r.payload, cand };
   }
-  if (kept.length === 0) return result;
+  if (!kept) return result;
   try {
-    const k = kept[0]!;
+    const k = kept;
     const [v] = await ctx.llm.review(
       channel,
       [{ index: 0, kind: k.payload.kind, text: k.payload.text, pollQuestion: k.payload.pollQuestion ?? "", pollOptions: k.payload.pollOptions ?? [], cardText: k.payload.cardText ?? "", followup: k.payload.followup ?? "", sourceIndex: -1 }],
@@ -380,12 +389,35 @@ async function refillSpecial(ctx: GenContext, channel: ChannelConfig, mode: "cre
       result.rejected.push(`review: ${v?.reason || "no verdict"}`);
       return result;
     }
-    store.enqueue({ channelId: channel.id, group: channel.group, payload: k.payload, topicKey: k.cand.topicKey, normText: k.cand.normText, normHash: k.cand.normHash, special: true, pending: needsApproval(ctx, channel), now });
-    result.queued++;
+    return k;
   } catch (err) {
     return failed(ctx, channel, now, result, err);
   }
-  return result;
+}
+
+async function refillSpecial(ctx: GenContext, channel: ChannelConfig, mode: "creative" | "fandom" | "news", now: number): Promise<RefillResult> {
+  const r = await writeOne(ctx, channel, mode, channel.special?.prompt.trim() ?? "", now);
+  if (!("payload" in r)) return r;
+  ctx.store.enqueue({ channelId: channel.id, group: channel.group, payload: r.payload, topicKey: r.cand.topicKey, normText: r.cand.normText, normHash: r.cand.normHash, special: true, pending: needsApproval(ctx, channel), now });
+  return { queued: 1, rejected: [] };
+}
+
+/**
+ * "Send now" on the website: writes one post from the owner's instruction
+ * (for example "חידה") and queues it to go out right away, outside the
+ * channel's schedule. Returns the post's text, or why nothing was written.
+ */
+export async function writeNow(ctx: GenContext, channel: ChannelConfig, prompt: string, now: number): Promise<{ text: string } | { error: string }> {
+  const mode = effectiveMode(channel) ?? "creative";
+  const r = await writeOne(ctx, channel, mode, prompt.trim() || "חידה", now);
+  if (!("payload" in r)) {
+    return { error: r.llmError ? `שירות ה-AI לא זמין כרגע (${r.llmError.kind})` : `ה-AI כתב פוסט שנפסל (${r.rejected.join(", ") || "לא ידוע"}). אפשר לנסות שוב.` };
+  }
+  // the next attempt for this channel's normal refill must not wait because of this call
+  ctx.store.updateChannel(channel.id, { retry_at: 0 });
+  ctx.store.enqueue({ channelId: channel.id, group: channel.group, payload: r.payload, topicKey: r.cand.topicKey, normText: r.cand.normText, normHash: r.cand.normHash, notBefore: now, isFollowup: true, manual: true, now });
+  const p = r.payload;
+  return { text: p.kind === "poll" ? `${p.pollQuestion} (${(p.pollOptions ?? []).join(" / ")})` : [p.cardText, p.text].filter(Boolean).join(" · ") };
 }
 
 /** The owner switched on "approve before posting" for this channel on the website. */
