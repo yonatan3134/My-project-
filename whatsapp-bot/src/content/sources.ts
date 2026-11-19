@@ -96,7 +96,7 @@ export function parseFeed(xml: string): FeedItem[] {
       guid: guidOf(textOf(e.id) || link || title),
       title,
       source: feedTitle,
-      snippet: stripHtml(textOf(e.summary ?? e.content)),
+      snippet: stripHtml(textOf(e.summary ?? e.content ?? (e["media:group"] as Record<string, unknown> | undefined)?.["media:description"])).slice(0, 600),
       link,
       publishedAt: Number.isNaN(date) ? 0 : date,
     });

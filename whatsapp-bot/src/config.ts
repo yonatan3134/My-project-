@@ -52,6 +52,8 @@ const ChannelSchema = z.object({
     })
     .optional(),
   enabled: z.boolean().default(true),
+  /** YouTube channels whose new videos are shared here as a post with the link ("@BrawlStars", a channel link or its id) */
+  youtube: z.array(z.string().min(2)).max(10).default([]),
   /** this channel's own rhythm instead of the general one */
   cycle: z
     .object({

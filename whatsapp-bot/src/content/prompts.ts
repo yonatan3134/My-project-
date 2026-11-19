@@ -50,6 +50,9 @@ For each post, decide whether it may be published. Set "ok" to false when the po
 
 Judge the rules, not the taste: a post that is merely plain or not very funny passes. Return one verdict per post, using the post's index. "reason" is a few English words when ok is false and empty when ok is true.`;
 
+const VIDEO_BRIEF =
+  'A SOURCE ITEM whose source name starts with "YouTube" is a new video. Write a short, excited post that says what the video is about (from its title and text only) and invites followers to watch and react. Do not write the link; it is added automatically.';
+
 const MODE_BRIEF: Record<"creative" | "fandom" | "news", string> = {
   creative:
     "This is a creative channel. Write original posts that fit the channel concept. No source items are needed; just keep to the hard rules.",
@@ -115,6 +118,7 @@ export function writerPrompt(req: WriterRequest): string {
   }
   const sources = renderSources(req.sources);
   if (sources) parts.push(sources);
+  if (req.sources.some((s) => s.source.startsWith("YouTube"))) parts.push(VIDEO_BRIEF);
   if (req.usedKeys.length > 0) {
     parts.push(`ALREADY USED (ideas this channel has posted; do not repeat them)\n${req.usedKeys.map((k) => `- ${k}`).join("\n")}`);
   }
