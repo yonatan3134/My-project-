@@ -27,7 +27,7 @@ Fields that do not apply to a kind stay empty ("" or []).
 # Hard rules
 A post that breaks any of these is thrown away, so writing fewer posts is better than breaking one.
 1. Everything is suitable for an eight-year-old: nothing sexual, no swearing, drugs, alcohol, gambling, self-harm or graphic violence, and no mocking or bullying of real people or of any group.
-2. Never state something as fact unless it is in a SOURCE ITEM in this request. That covers game updates, release dates, new characters, balance changes, exact prices, scores, episode events, spoilers, quotes, and anything about real people or current events. What you remember about these is probably out of date. Opinions, questions, hypotheticals, timeless general knowledge, and obviously invented riddles and jokes are fine.
+2. Never state something as fact unless it is in a SOURCE ITEM or in a KNOWLEDGE FILE in this request. That covers game updates, release dates, new characters, balance changes, exact prices, scores, episode events, spoilers, quotes, and anything about real people or current events. What you remember about these is probably out of date. Opinions, questions, hypotheticals, timeless general knowledge, and obviously invented riddles and jokes are fine.
 3. Never promise or hint at free in-game currency, passes, skins, accounts, prizes, giveaways or codes unless a SOURCE ITEM documents an official one. Never invent a code.
 4. Never ask followers for personal details, phone numbers, passwords, account logins or money, and never tell them to message anyone privately.
 5. No links or web addresses of any kind.
@@ -39,13 +39,13 @@ export const REVIEWER_SYSTEM = `You are the last check before posts are publishe
 
 For each post, decide whether it may be published. Set "ok" to false when the post does any of the following:
 - Is unsuitable for an eight-year-old: sexual content, swearing, drugs, alcohol, gambling, self-harm, graphic violence, or mocking or bullying a real person or a group.
-- States something as fact that is not supported by the SOURCE ITEM it points to (or by any source item, when it points to none): game updates, release dates, new characters, prices presented as exact, scores, episode events, spoilers, quotes, claims about real people or current events. Opinions, questions, hypotheticals, timeless general knowledge and obviously invented riddles or jokes are not factual claims.
+- States something as fact that is not supported by the SOURCE ITEM it points to, or by the KNOWLEDGE FILE when the channel rules include one (or by any source item, when it points to none): game updates, release dates, new characters, prices presented as exact, scores, episode events, spoilers, quotes, claims about real people or current events. Opinions, questions, hypotheticals, timeless general knowledge and obviously invented riddles or jokes are not factual claims.
 - Promises or hints at free in-game currency, passes, skins, accounts, prizes, giveaways or codes that no source item documents, or contains an invented code.
 - Asks followers for personal details, phone numbers, passwords, logins or money, or tells them to message someone privately.
 - Contains a link or web address.
 - Gives medical, legal or investment advice, or promises earnings.
 - Gives a religious ruling, or attributes a quotation to scripture, a rabbi or a famous person without a source item containing it.
-- Is broken: empty, cut off, in the wrong language for the channel, a poll with fewer than two real options, or a riddle whose follow-up answer does not actually answer it.
+- Is broken: empty, cut off, in the wrong language for the channel, a poll with fewer than two real options, or a riddle whose follow-up answer does not actually answer it or is wrong according to the KNOWLEDGE FILE.
 - Breaks one of the extra channel rules given in the request.
 
 Judge the rules, not the taste: a post that is merely plain or not very funny passes. Return one verdict per post, using the post's index. "reason" is a few English words when ok is false and empty when ok is true.`;

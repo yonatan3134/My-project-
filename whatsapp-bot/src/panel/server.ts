@@ -5,6 +5,7 @@ import path from "node:path";
 import { logger } from "../logger.js";
 import { DATA_DIR } from "../paths.js";
 import { PAGE } from "./page.js";
+import { KNOWLEDGE_DIR } from "../content/knowledge.js";
 
 export const PASSWORD_FILE = path.join(DATA_DIR, "panel-password");
 
@@ -30,6 +31,7 @@ export interface PanelApi {
   setPaused(paused: boolean): void;
   setGrowth(on: boolean): void;
   setGradual(on: boolean): void;
+  setKnowledge(id: string, file: string): string | null;
   queue(channelId: string): unknown;
   pauseChannel(id: string, paused: boolean): string | null;
   setApprove(id: string, on: boolean): string | null;
@@ -115,6 +117,13 @@ export function startPanel(api: PanelApi, port: number): http.Server {
       const url = new URL(req.url ?? "/", "http://panel");
       if (req.method === "GET" && url.pathname === "/") return send(res, 200, PAGE, "text/html; charset=utf-8");
       if (req.method === "GET" && url.pathname === "/api/state") return send(res, 200, api.state());
+      const pdf = url.pathname.match(/^\/knowledge\/([a-z0-9-]+)\.pdf$/);
+      if (req.method === "GET" && pdf) {
+        const file = path.join(KNOWLEDGE_DIR, `${pdf[1]}.pdf`);
+        if (!fs.existsSync(file)) return send(res, 404, { error: "not found" });
+        res.writeHead(200, { "Content-Type": "application/pdf", "Cache-Control": "no-store" });
+        return res.end(fs.readFileSync(file));
+      }
       if (req.method === "GET" && url.pathname === "/api/pending") return send(res, 200, api.pending(url.searchParams.get("channel") ?? ""));
       if (req.method === "GET" && url.pathname === "/api/queue") return send(res, 200, api.queue(url.searchParams.get("channel") ?? ""));
 
@@ -166,6 +175,9 @@ export function startPanel(api: PanelApi, port: number): http.Server {
             break;
           case "/api/discard":
             error = api.discard(Number(body.id));
+            break;
+          case "/api/knowledge":
+            error = api.setKnowledge(String(body.id ?? ""), String(body.file ?? ""));
             break;
           case "/api/gradual":
             api.setGradual(body.on === true);

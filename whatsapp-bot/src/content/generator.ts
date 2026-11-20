@@ -6,6 +6,7 @@ import { LLMError, type Draft, type LLM } from "./llm.js";
 import type { ReviewItem } from "./prompts.js";
 import { collectItems, fetchSefariaChapter, fetchText, hebrewNumeral, type FetchText } from "./sources.js";
 import { isYoutubeLink, youtubeChannelId, youtubeFeedUrl } from "./youtube.js";
+import { withKnowledge } from "./knowledge.js";
 
 export interface GenContext {
   store: Store;
@@ -167,8 +168,9 @@ async function refillSefaria(ctx: GenContext, channel: ChannelConfig, now: numbe
  * Tops up one channel's queue: asks the model for a batch, drops anything
  * malformed, repeated or rejected by the reviewer, and stores the rest.
  */
-export async function refillChannel(ctx: GenContext, channel: ChannelConfig, now: number): Promise<RefillResult> {
+export async function refillChannel(ctx: GenContext, channelIn: ChannelConfig, now: number): Promise<RefillResult> {
   const result: RefillResult = { queued: 0, rejected: [] };
+  const channel = withKnowledge(ctx.store, channelIn);
   const mode = effectiveMode(channel);
   if (!mode || !channel.enabled) return result;
   const { store, settings } = ctx;
@@ -347,6 +349,7 @@ async function writeOne(
   now: number,
 ): Promise<{ payload: PostPayload; cand: Candidate } | RefillResult> {
   const result: RefillResult = { queued: 0, rejected: [] };
+  channel = withKnowledge(ctx.store, channel);
   const { store, settings } = ctx;
   // written freely from the owner's instruction, never as a news report
   const writeMode = mode === "news" ? "creative" : mode;
