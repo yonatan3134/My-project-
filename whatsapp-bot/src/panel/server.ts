@@ -40,6 +40,7 @@ export interface PanelApi {
   test(id: string): Promise<{ error?: string; results?: unknown }>;
   sendNow(id: string, prompt: string): Promise<{ text: string } | { error: string }>;
   flush(id: string): string | null;
+  broadcast(text: string): string | null;
   push(id: string, message: string): string | null;
   discard(id: number): string | null;
 }
@@ -158,6 +159,9 @@ export function startPanel(api: PanelApi, port: number): http.Server {
             const r = await api.sendNow(String(body.id ?? ""), String(body.prompt ?? "").slice(0, 300));
             return send(res, "error" in r ? 400 : 200, r);
           }
+          case "/api/broadcast":
+            error = api.broadcast(String(body.text ?? "").slice(0, 3000));
+            break;
           case "/api/flush":
             error = api.flush(String(body.id ?? ""));
             break;

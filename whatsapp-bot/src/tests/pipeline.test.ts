@@ -371,3 +371,18 @@ test("the website can say why a channel is not posting, and the gradual start ca
   store.updateChannel("c1", { role: "SUBSCRIBER" });
   assert.match(scheduler.explain(config.channels[1]!, START).status, /לא מנהל/);
 });
+
+test("a message to all channels reaches every channel the bot runs, not paused ones", async () => {
+  const config = makeConfig([{ id: "a", mode: "creative" }, { id: "b", mode: "news" }, { id: "c", mode: "creative" }, { id: "d", mode: "invasion" }]);
+  const store = new Store(":memory:");
+  for (const c of config.channels) store.updateChannel(c.id, { jid: `sim-${c.id}@newsletter`, role: "ADMIN", resolved_at: START });
+  store.updateChannel("c", { paused: 1 });
+  const sender = new ScriptedSender();
+  let clock = START + 2 * HOUR; // night: the owner's message still goes out
+  const t0 = clock;
+  const scheduler = new Scheduler({ store, config, sender, media: stubMedia, now: () => clock, random: seededRandom(6), isConnected: () => true });
+  assert.equal(scheduler.broadcast("🎉 תודה לכולם!", t0), 3);
+  for (; clock < t0 + 5 * MINUTE; clock += 15_000) await scheduler.tick();
+  assert.deepEqual(sender.log.map((s) => s.jid).sort(), ["sim-a@newsletter", "sim-b@newsletter", "sim-d@newsletter"]);
+  assert.ok(sender.log.every((s) => s.body === "🎉 תודה לכולם!"));
+});

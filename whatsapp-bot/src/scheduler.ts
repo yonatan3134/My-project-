@@ -469,6 +469,23 @@ export class Scheduler {
     return n;
   }
 
+  /**
+   * One message from the owner to every channel the bot posts in (paused
+   * channels are skipped). They go out one after another, 20-45 seconds apart.
+   */
+  broadcast(text: string, now: number): number {
+    const { store } = this.d;
+    let n = 0;
+    for (const c of this.d.config.channels) {
+      if (!c.enabled || c.mode === "off") continue;
+      const st = store.channel(c.id);
+      if (!st.jid || !canPost(st.role) || st.paused) continue;
+      store.enqueue({ channelId: c.id, payload: { kind: "text", text }, notBefore: now, isFollowup: true, manual: true, now });
+      n++;
+    }
+    return n;
+  }
+
   /** Queues a call in the invasion channel pointing at `target`. Returns false when there is no usable invasion channel. */
   queueInvasion(target: ChannelConfig, now: number, emoji?: string): boolean {
     const { store } = this.d;
