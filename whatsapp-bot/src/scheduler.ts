@@ -139,6 +139,54 @@ export class Scheduler {
     return (this.d.random ?? Math.random)();
   }
 
+  /** The gradual start (few channels and few posts a day at first). The owner can switch it off on the website. */
+  gradual(): boolean {
+    return this.d.store.get("gradual") !== "0";
+  }
+
+  /** The daily limit for a channel, with the warm-up part only while the gradual start is on. */
+  capFor(channel: ChannelConfig, now: number): number | null {
+    const state = this.d.store.channel(channel.id);
+    return dailyCap(channel, this.s, this.gradual() ? state.activated_at : null, now);
+  }
+
+  /**
+   * Why a channel is or is not posting, in words for the website, and when
+   * its next post is expected. Mirrors the checks the scheduler makes.
+   */
+  explain(channel: ChannelConfig, now: number): { status: string; ok: boolean; next: number | null } {
+    const { store } = this.d;
+    const state = store.channel(channel.id);
+    if (!channel.enabled || channel.mode === "off") return { status: "כבוי", ok: false, next: null };
+    if (channel.mode === "invasion") return { status: "ערוץ פלישה: מפרסם כשיש סקר בערוץ אחר", ok: true, next: null };
+    if (this.isPaused()) return { status: "כל הפרסומים עצורים", ok: false, next: null };
+    if (state.paused) return { status: "הערוץ עצור", ok: false, next: null };
+    if (!this.d.isConnected()) return { status: "הבוט לא מחובר לוואטסאפ", ok: false, next: null };
+    if (!state.jid) return { status: "הערוץ עוד לא נמצא בוואטסאפ", ok: false, next: null };
+    if (!canPost(state.role)) return { status: "הבוט לא מנהל בערוץ", ok: false, next: null };
+    if (!this.activeChannels(now).some((c) => c.id === channel.id)) {
+      return { status: "מחכה לתורו בהתחלה ההדרגתית", ok: false, next: null };
+    }
+    const cap = this.capFor(channel, now);
+    const sent = store.sentOnDay(channel.id, dayKey(now, this.s.timezone));
+    if (cap !== null && sent >= cap) return { status: `פרסם היום ${sent} מתוך ${cap} (המקסימום היומי)`, ok: true, next: null };
+    if (store.readyCount(channel.id) === 0 && !channel.special?.text.trim()) {
+      if (store.pendingList(channel.id, 1).length > 0) return { status: "יש פוסטים שמחכים לאישור שלך", ok: false, next: null };
+      if (channel.mode !== "creative") return { status: "אין כרגע חדשות או סרטונים חדשים לפרסם", ok: true, next: null };
+      return { status: "אין פוסטים מוכנים: ה-AI לא כתב (בדוק את המודלים)", ok: false, next: null };
+    }
+    const cs = channelSettings(channel, this.s);
+    const notBefore = cap !== null ? state.last_post_ts + minSpacingMs(cap) : 0;
+    // the first slot from now on that is not used yet, not in quiet hours, and after the spacing
+    for (let t = now; t < now + 2 * DAY; t += 5 * MINUTE) {
+      const slot = currentSlot(t, channel.id, cs);
+      if (slot === null || slot <= state.last_slot_ts || slot < now - this.s.send.graceMinutes * MINUTE) continue;
+      if (inQuietHours(this.s, t, this.growth()) || t < notBefore) continue;
+      return { status: "פעיל", ok: true, next: Math.max(slot, t) };
+    }
+    return { status: "פעיל", ok: true, next: null };
+  }
+
   growth(): boolean {
     return this.d.store.get("growth") === "1";
   }
@@ -156,7 +204,7 @@ export class Scheduler {
       started = now;
       store.set("rollout_started_at", String(now));
     }
-    const active = all.slice(0, rolloutCount(this.s, started, now, all.length));
+    const active = this.gradual() ? all.slice(0, rolloutCount(this.s, started, now, all.length)) : all;
     for (const c of active) {
       if (store.channel(c.id).activated_at === null) store.updateChannel(c.id, { activated_at: now });
     }
@@ -255,7 +303,7 @@ export class Scheduler {
         store.event(now, "warn", "not_admin", `the bot is not an admin of this channel (role: ${state.role ?? "none"})`, channel.id);
         continue;
       }
-      const cap = dailyCap(channel, this.s, state.activated_at, now);
+      const cap = this.capFor(channel, now);
       if (cap !== null) {
         if (store.sentOnDay(channel.id, dayKey(now, this.s.timezone)) >= cap) continue;
         if (now - state.last_post_ts < minSpacingMs(cap)) continue;

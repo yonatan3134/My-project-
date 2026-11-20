@@ -344,3 +344,27 @@ test("send the whole queue now: every waiting post goes out within minutes, spac
   assert.equal(sender.log.length, 5);
   assert.equal(store.readyCount("q"), 0);
 });
+
+test("the website can say why a channel is not posting, and the gradual start can be switched off", async () => {
+  const config = makeConfig(
+    Array.from({ length: 8 }, (_, i) => ({ id: `c${i}`, mode: "creative" })),
+    { rollout: [{ days: 3, channels: 5 }], warmup: [{ days: 7, maxPerDay: 4 }] },
+  );
+  const store = new Store(":memory:");
+  for (const c of config.channels) store.updateChannel(c.id, { jid: `sim-${c.id}@newsletter`, role: "ADMIN", resolved_at: START });
+  const sender = new ScriptedSender();
+  const scheduler = new Scheduler({ store, config, sender, media: stubMedia, now: () => START, random: seededRandom(5), isConnected: () => true });
+  const [first] = config.channels;
+  assert.match(scheduler.explain(first!, START).status, /אין פוסטים מוכנים/);
+  store.enqueue({ channelId: "c0", payload: { kind: "text", text: "x" }, now: START });
+  const ok = scheduler.explain(first!, START);
+  assert.equal(ok.status, "פעיל");
+  assert.ok(ok.next !== null && ok.next >= START && ok.next < START + 5 * HOUR);
+  assert.match(scheduler.explain(config.channels[7]!, START).status, /התחלה ההדרגתית/);
+  assert.equal(scheduler.capFor(first!, START), 4);
+  store.set("gradual", "0");
+  assert.equal(scheduler.activeChannels(START).length, 8);
+  assert.equal(scheduler.capFor(first!, START), null);
+  store.updateChannel("c1", { role: "SUBSCRIBER" });
+  assert.match(scheduler.explain(config.channels[1]!, START).status, /לא מנהל/);
+});
