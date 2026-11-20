@@ -141,7 +141,7 @@ export class Scheduler {
 
   /** The gradual start (few channels and few posts a day at first). The owner can switch it off on the website. */
   gradual(): boolean {
-    return this.d.store.get("gradual") !== "0";
+    return this.d.store.get("gradual") === "1"; // off unless the owner switches it on
   }
 
   /** The daily limit for a channel, with the warm-up part only while the gradual start is on. */

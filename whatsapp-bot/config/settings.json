@@ -7,7 +7,7 @@
     "intervalMinutes": 60,
     "pauseMinutes": 120
   },
-  "fandomMaxPerDay": 6,
+  "fandomMaxPerDay": 15,
   "newsMaxPerDay": 4,
   "warmup": [
     {
