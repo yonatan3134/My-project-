@@ -18,6 +18,7 @@ import { Scheduler, postingChannels } from "./scheduler.js";
 import { HOUR, MINUTE, dayKey, sleep } from "./time.js";
 import { canPost, fetchChannelPosts, recentPostTexts, resolveChannels } from "./wa/channels.js";
 import { recordChannelEngagement } from "./engagement.js";
+import { knowledgeFiles } from "./content/knowledge.js";
 import { renderCard } from "./media/cards.js";
 import { WaClient } from "./wa/client.js";
 import { DryRunSender, WaSender, type Sender } from "./wa/sender.js";
@@ -292,6 +293,7 @@ async function main(): Promise<void> {
             pendingTotal: store.pendingCount(),
             growth: scheduler.growth(),
             gradual: scheduler.gradual(),
+            knowledgeFiles: knowledgeFiles(),
             hasClaude: env.hasAnthropicKey,
             models: llm instanceof FallbackLLM
               ? llm.status().map((m) => ({ name: m.name, problem: m.until > now() ? m.problem : null, lastUsedAt: m.lastUsedAt }))
@@ -313,6 +315,7 @@ async function main(): Promise<void> {
                 cap: scheduler.capFor(c, now()),
                 why: scheduler.explain(c, now()),
                 approve: store.get(`approve:${c.id}`) === "1",
+                knowledge: store.get(`knowledge:${c.id}`) ?? "",
                 perf: store.kindPerformance(c.id, now()),
               };
             }),
@@ -422,6 +425,14 @@ async function main(): Promise<void> {
         setPaused: (paused) => store.set("paused", paused ? "1" : "0"),
         setGrowth: (on) => store.set("growth", on ? "1" : "0"),
         setGradual: (on) => store.set("gradual", on ? "1" : "0"),
+        setKnowledge: (id, file) => {
+          if (!config.channels.some((c) => c.id === id)) return "ערוץ לא קיים";
+          if (file && !knowledgeFiles().some((k) => k.name === file)) return "קובץ לא קיים";
+          store.set(`knowledge:${id}`, file);
+          // what was written before no longer matches: let the next posts come from the file
+          if (file) store.updateChannel(id, { retry_at: 0 });
+          return null;
+        },
         pauseChannel: (id, paused) => {
           if (!config.channels.some((c) => c.id === id)) return "ערוץ לא קיים";
           store.updateChannel(id, { paused: paused ? 1 : 0 });

@@ -133,3 +133,23 @@ test("the bot writes more of the kind of post that gets reactions", async () => 
   await refillChannel({ store, llm: llm as never, settings: config.settings }, config.channels[0]!, now);
   assert.ok((asked.poll ?? 0) >= 9, `asked for ${JSON.stringify(asked)}: polls should dominate`);
 });
+
+import { knowledgeFiles, withKnowledge } from "../content/knowledge.js";
+import { writerPrompt, reviewerPrompt } from "../content/prompts.js";
+
+test("a knowledge file, when switched on, reaches both the writer and the reviewer", () => {
+  const files = knowledgeFiles();
+  assert.ok(files.some((f) => f.name === "brawl-stars" && f.pdf), JSON.stringify(files));
+  const store = new Store(":memory:");
+  const channel = makeConfig([{ id: "b", mode: "fandom", rules: "בלי ספוילרים" }]).channels[0]!;
+  assert.equal(withKnowledge(store, channel), channel, "off by default");
+  store.set("knowledge:b", "brawl-stars");
+  const kb = withKnowledge(store, channel);
+  assert.match(kb.rules, /^בלי ספוילרים/);
+  assert.match(kb.rules, /KNOWLEDGE FILE:[\s\S]*ספייק \(Spike\)/);
+  const w = writerPrompt({ channel: kb, mode: "fandom", counts: { text: 2 }, usedKeys: [], samples: [], sources: [] });
+  assert.match(w, /riddles, trivia questions/);
+  assert.match(reviewerPrompt(kb, [], []), /ג'ם גראב/);
+  store.set("knowledge:b", "../../etc/passwd");
+  assert.equal(withKnowledge(store, channel), channel, "only real knowledge files are read");
+});

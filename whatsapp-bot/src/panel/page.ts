@@ -243,6 +243,11 @@ function renderChannels(list) {
       '<label>או: הוראה ל-AI (למשל "חידה קשה במיוחד" או "סקר על הדמות הכי אהובה")</label><textarea class="spP">' + esc(sp.prompt ?? "") + "</textarea>" +
       (live ? '<h3 style="font-size:15px;margin:14px 0 0">🛡️ אישור לפני פרסום</h3><label><input type="checkbox" class="appr" style="width:auto"' + (c.approve ? " checked" : "") + '> כל פוסט מחכה לאישור שלי באתר לפני שהוא יוצא</label>' : "") +
       '<h3 style="font-size:15px;margin:14px 0 0">📈 מה עובד בערוץ</h3>' + perfHtml(c.perf) +
+      (live && S.knowledgeFiles.length ? '<h3 style="font-size:15px;margin:14px 0 0">📚 קובץ ידע לחידות</h3>' +
+        '<p class="hint" style="margin:4px 0">כשבוחרים קובץ, רוב הפוסטים בערוץ הופכים לחידות, טריוויה ו"מי אני?" מתוך הקובץ, והתשובה יוצאת אחרי חצי שעה.</p>' +
+        '<div class="row"><select class="kb" style="flex:1"><option value="">ללא</option>' +
+        S.knowledgeFiles.map((k) => '<option value="' + esc(k.name) + '"' + (k.name === c.knowledge ? " selected" : "") + ">" + esc(k.title) + "</option>").join("") +
+        "</select>" + S.knowledgeFiles.filter((k) => k.pdf).map((k) => '<a class="hint" target="_blank" href="/knowledge/' + esc(k.name) + '.pdf">📄 לפתוח את ' + esc(k.title) + "</a>").join(" ") + "</div>" : "") +
       (live ? '<h3 style="font-size:15px;margin:14px 0 0">⚡ לשלוח עכשיו</h3><div class="row"><input class="nowp" value="חידה" style="flex:1;min-width:140px" placeholder="מה לשלוח, למשל: חידה / סקר / בדיחה"><button class="sendnow">⚡ שלח עכשיו</button></div><div class="nowres hint"></div>' : "") +
       (live ? '<div class="row" style="margin-top:12px"><button class="push">📣 לדחוף את הערוץ בכל הערוצים</button><button class="light test">🧪 לשלוח 4 פוסטי בדיקה</button></div><div class="testres hint"></div>' : "") +
       "</details></div>";
@@ -271,6 +276,10 @@ function renderChannels(list) {
         "<br>עכשיו פותחים את הערוץ בטלפון ובודקים מה באמת הופיע. מה שסומן ✅ ולא מופיע, וואטסאפ לא הציגה.";
     } catch (e) { out.textContent = e.message; }
     b.disabled = false;
+  });
+  document.querySelectorAll(".ch .kb").forEach((sel) => sel.onchange = async () => {
+    const id = sel.closest(".ch").dataset.id;
+    try { await post("/api/knowledge", { id, file: sel.value }); const c = S.channels.find((x) => x.id === id); if (c) c.knowledge = sel.value; toast(sel.value ? "📚 מעכשיו הערוץ כותב חידות מהקובץ" : "הערוץ חזר לכתוב כרגיל"); } catch (e) { toast(e.message); }
   });
   document.querySelectorAll(".ch .sendnow").forEach((b) => b.onclick = async () => {
     const box = b.closest(".ch"), out = box.querySelector(".nowres");
