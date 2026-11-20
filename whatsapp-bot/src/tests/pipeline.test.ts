@@ -215,7 +215,9 @@ test("the bot never posts where it is not an admin", async () => {
 test("gradual start and warm-up on the real configuration", async () => {
   const { loadConfig } = await import("../config.js");
   const config = loadConfig();
-  const { store } = await simulate({ config, days: 4, start: START });
+  const gradualStore = new Store(":memory:");
+  gradualStore.set("gradual", "1"); // off by default; the owner can switch it on
+  const { store } = await simulate({ config, days: 4, start: START, store: gradualStore });
   const posts = sentRows(store).filter((r) => !r.is_followup);
   const byDay = new Map<string, Set<string>>();
   const counts = new Map<string, number>();
@@ -351,6 +353,7 @@ test("the website can say why a channel is not posting, and the gradual start ca
     { rollout: [{ days: 3, channels: 5 }], warmup: [{ days: 7, maxPerDay: 4 }] },
   );
   const store = new Store(":memory:");
+  store.set("gradual", "1");
   for (const c of config.channels) store.updateChannel(c.id, { jid: `sim-${c.id}@newsletter`, role: "ADMIN", resolved_at: START });
   const sender = new ScriptedSender();
   const scheduler = new Scheduler({ store, config, sender, media: stubMedia, now: () => START, random: seededRandom(5), isConnected: () => true });
