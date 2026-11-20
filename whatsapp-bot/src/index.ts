@@ -486,6 +486,12 @@ async function main(): Promise<void> {
           if (!st.jid || !canPost(st.role)) return { error: "הבוט לא מנהל בערוץ הזה (או שהוא עוד לא נמצא)" };
           return writeNow(gen, c, prompt, now());
         },
+        broadcast: (text) => {
+          const t = text.trim();
+          if (t.length < 2) return "ההודעה ריקה";
+          const n = scheduler.broadcast(t, now());
+          return n === 0 ? "אין ערוצים שהבוט מנהל בהם" : null;
+        },
         flush: (id) => {
           const n = store.flushQueue(id, now());
           return n === 0 ? "אין פוסטים בתור של הערוץ הזה" : null;

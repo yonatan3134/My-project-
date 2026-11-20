@@ -56,6 +56,13 @@ export const PAGE = `<!doctype html>
     <ul class="events" id="events" style="margin-top:12px"></ul>
   </section>
 
+  <section class="card">
+    <h2>📢 הודעה לכל הערוצים</h2>
+    <p class="hint">נשלחת כמו שכתבת לכל הערוצים שהבוט מנהל בהם (חוץ מערוצים עצורים), אחד אחרי השני, בהפרש של חצי דקה עד דקה.</p>
+    <textarea id="bcText" placeholder="למשל: 🎉 הגענו ל-10,000 עוקבים בכל הערוצים! תודה לכולכם ❤️"></textarea>
+    <div class="row" style="margin-top:8px"><button id="bcBtn">📢 לשלוח לכל הערוצים</button></div>
+  </section>
+
   <section class="card" id="pendingCard" style="display:none">
     <h2>✅ מחכים לאישור שלך</h2>
     <p class="hint">בערוצים שבהם הפעלת "אישור לפני פרסום". ✅ = יפורסם בזמן הבא של הערוץ. 🗑 = נמחק.</p>
@@ -394,6 +401,14 @@ async function loadQueue() {
   } catch { $("queue").innerHTML = '<p class="hint">לא הצלחתי לטעון</p>'; }
 }
 $("qCh").onchange = loadQueue;
+$("bcText").addEventListener("input", () => editing = true);
+$("bcBtn").onclick = async () => {
+  const text = $("bcText").value.trim();
+  if (!text) { toast("כתוב קודם הודעה"); return; }
+  const n = S.channels.filter((c) => c.enabled && c.mode !== "off" && (c.role === "OWNER" || c.role === "ADMIN") && !c.paused).length;
+  if (!confirm("לשלוח את ההודעה הזו ל-" + n + " ערוצים?\\n\\n" + text)) return;
+  try { await post("/api/broadcast", { text }); $("bcText").value = ""; editing = false; toast("📢 ההודעה בדרך לכל הערוצים"); } catch (e) { toast(e.message); }
+};
 $("flushBtn").onclick = async () => {
   const id = $("qCh").value, c = S.channels.find((x) => x.id === id);
   if (!id || !confirm("לשלוח עכשיו את כל " + (c ? c.ready : "") + " הפוסטים שבתור של " + (c ? c.name : "") + "? הם ייצאו אחד אחרי השני, בהפרש של חצי דקה עד דקה.")) return;
