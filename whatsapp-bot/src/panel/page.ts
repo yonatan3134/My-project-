@@ -51,7 +51,8 @@ export const PAGE = `<!doctype html>
   <section class="card">
     <h2>מצב עכשיו</h2>
     <div class="row" id="stats"></div>
-    <div class="row" style="margin-top:12px"><button id="pauseBtn" class="light"></button></div>
+    <div class="row" style="margin-top:12px"><button id="pauseBtn" class="light"></button><button id="gradualBtn" class="light"></button></div>
+    <p class="hint" id="gradualHint" style="margin:6px 0 0"></p>
     <ul class="events" id="events" style="margin-top:12px"></ul>
   </section>
 
@@ -159,6 +160,10 @@ function render() {
   ].map(([t, v]) => '<div class="stat"><b>' + esc(v) + "</b><span>" + t + "</span></div>").join("");
   $("growthBtn").textContent = s.growth ? "✅ מצב צמיחה פועל · לכבות" : "🚀 להפעיל מצב צמיחה";
   $("growthBtn").className = s.growth ? "light" : "";
+  $("gradualBtn").textContent = s.gradual ? "🐢 התחלה הדרגתית: פועלת · לכבות" : "🐢 התחלה הדרגתית: כבויה · להפעיל";
+  $("gradualHint").textContent = s.gradual
+    ? "בימים הראשונים רק חלק מהערוצים מפרסמים, ועד 4 פוסטים ביום בכל ערוץ. זה מוריד את הסיכון שוואטסאפ תחסום את המספר. כשהיא כבויה, כל הערוצים מפרסמים בקצב המלא."
+    : "כל הערוצים מפרסמים בקצב המלא.";
   $("pauseBtn").textContent = s.paused ? "▶️ להחזיר את הפרסומים" : "⏸ לעצור את כל הפרסומים";
   $("recent").innerHTML = s.recent.length ? s.recent.map((r) =>
     '<div class="post"><div class="t">' + esc(r.text) + "<small>" + esc(r.channel) + " · " + new Date(r.at).toLocaleTimeString("he-IL", { hour:"2-digit", minute:"2-digit" }) + "</small></div></div>").join("")
@@ -216,6 +221,8 @@ function renderChannels(list) {
         (c.followersWeek ? '<span class="grow ' + (c.followersWeek > 0 ? "up" : "down") + '">' + (c.followersWeek > 0 ? "+" : "") + c.followersWeek + " בשבוע</span>" : "") : "") +
       (c.sentToday ? '<span class="hint">' + c.sentToday + " היום</span>" : "") +
       '<button class="danger del" title="מחיקה מהבוט">✕</button></div>' +
+      (c.why ? '<div class="hint" style="margin:4px 0 0;color:' + (c.why.ok ? "var(--muted)" : "var(--bad)") + '">' + (c.why.ok ? "🟢 " : "🔴 ") + esc(c.why.status) +
+        (c.why.next ? " · הפוסט הבא בסביבות " + new Date(c.why.next).toLocaleString("he-IL", { weekday:"short", hour:"2-digit", minute:"2-digit" }) : "") + "</div>" : "") +
       '<details' + (c.id ? "" : " open") + '><summary>⚙️ ניהול הערוץ</summary>' +
       '<label><input type="checkbox" class="en" style="width:auto"' + (c.enabled ? " checked" : "") + '> הבוט מנהל את הערוץ הזה</label>' +
       '<label>קישור לערוץ</label><input class="invite ltr" value="' + esc(!c.invite ? "" : c.invite.startsWith("http") ? c.invite : "https://whatsapp.com/channel/" + c.invite) + '" placeholder="https://whatsapp.com/channel/...">' +
@@ -357,6 +364,10 @@ $("saveSettings").onclick = async () => {
 };
 ["botPhone", "ownerPhone", "ntfyTopic"].forEach((id) => $(id).addEventListener("input", () => editing = true));
 $("growthBtn").onclick = async () => { try { await post("/api/growth", { on: !S.growth }); toast(S.growth ? "מצב צמיחה כבוי" : "מצב צמיחה הופעל 🚀"); load(); } catch (e) { toast(e.message); } };
+$("gradualBtn").onclick = async () => {
+  if (S.gradual && !confirm("לכבות את ההתחלה ההדרגתית? כל הערוצים יתחילו לפרסם בקצב המלא, וזה מעלה את הסיכון שוואטסאפ תחסום את מספר הבוט.")) return;
+  try { await post("/api/gradual", { on: !S.gradual }); load(); } catch (e) { toast(e.message); }
+};
 $("pauseBtn").onclick = async () => { try { await post("/api/pause", { paused: !S.paused }); load(); } catch (e) { toast(e.message); } };
 
 async function loadQueue() {

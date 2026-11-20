@@ -29,6 +29,7 @@ export interface PanelApi {
   startLink(): Promise<string | null>;
   setPaused(paused: boolean): void;
   setGrowth(on: boolean): void;
+  setGradual(on: boolean): void;
   queue(channelId: string): unknown;
   pauseChannel(id: string, paused: boolean): string | null;
   setApprove(id: string, on: boolean): string | null;
@@ -165,6 +166,9 @@ export function startPanel(api: PanelApi, port: number): http.Server {
             break;
           case "/api/discard":
             error = api.discard(Number(body.id));
+            break;
+          case "/api/gradual":
+            api.setGradual(body.on === true);
             break;
           case "/api/growth":
             api.setGrowth(body.on === true);

@@ -14,7 +14,7 @@ import { ffmpegAvailable } from "./media/video.js";
 import { AUTH_DIR, DB_PATH, TMP_DIR, ensureDirs } from "./paths.js";
 import { updateEnvFile } from "./panel/envfile.js";
 import { startPanel } from "./panel/server.js";
-import { Scheduler, dailyCap, postingChannels } from "./scheduler.js";
+import { Scheduler, postingChannels } from "./scheduler.js";
 import { HOUR, MINUTE, dayKey, sleep } from "./time.js";
 import { canPost, fetchChannelPosts, recentPostTexts, resolveChannels } from "./wa/channels.js";
 import { recordChannelEngagement } from "./engagement.js";
@@ -291,6 +291,7 @@ async function main(): Promise<void> {
             defaultCycle: settings.cycle,
             pendingTotal: store.pendingCount(),
             growth: scheduler.growth(),
+            gradual: scheduler.gradual(),
             hasClaude: env.hasAnthropicKey,
             models: llm instanceof FallbackLLM
               ? llm.status().map((m) => ({ name: m.name, problem: m.until > now() ? m.problem : null, lastUsedAt: m.lastUsedAt }))
@@ -309,7 +310,8 @@ async function main(): Promise<void> {
                 id: c.id, name: c.name, invite: c.invite, mode: c.mode, topic: c.topic, queries: c.news?.queries ?? [], youtube: c.youtube, enabled: c.enabled,
                 role: st.role, sentToday: perChannel.get(c.id) ?? 0, ready: store.readyCount(c.id), followers: f.count, followersWeek: f.week,
                 paused: st.paused === 1, maxPerDay: c.maxPerDay ?? null, cycle: c.cycle ?? null, special: c.special ?? null,
-                cap: dailyCap(c, settings, st.activated_at, now()),
+                cap: scheduler.capFor(c, now()),
+                why: scheduler.explain(c, now()),
                 approve: store.get(`approve:${c.id}`) === "1",
                 perf: store.kindPerformance(c.id, now()),
               };
@@ -419,6 +421,7 @@ async function main(): Promise<void> {
         },
         setPaused: (paused) => store.set("paused", paused ? "1" : "0"),
         setGrowth: (on) => store.set("growth", on ? "1" : "0"),
+        setGradual: (on) => store.set("gradual", on ? "1" : "0"),
         pauseChannel: (id, paused) => {
           if (!config.channels.some((c) => c.id === id)) return "ערוץ לא קיים";
           store.updateChannel(id, { paused: paused ? 1 : 0 });
