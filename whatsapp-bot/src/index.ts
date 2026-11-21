@@ -101,7 +101,13 @@ async function main(): Promise<void> {
   const aiImages = new AiImages(
     store,
     { ...settings.images, timezone: settings.timezone },
-    process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim(),
+    {
+      gemini: process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim(),
+      cloudflareAccount: process.env.CLOUDFLARE_ACCOUNT_ID?.trim(),
+      cloudflareToken: process.env.CLOUDFLARE_API_TOKEN?.trim(),
+      pollinationsToken: process.env.POLLINATIONS_TOKEN?.trim(),
+      hordeKey: process.env.HORDE_API_KEY?.trim(),
+    },
     (m) => store.event(now(), "warn", "ai_image", m),
   );
 
@@ -332,6 +338,7 @@ async function main(): Promise<void> {
               ids: g.ids, at: g.at, text: g.text, channel: g.names.length > 1 ? `${g.names.length} ערוצים` : (g.names[0] ?? ""),
             })),
             hasClaude: env.hasAnthropicKey,
+            hasCloudflare: Boolean(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN),
             models: llm instanceof FallbackLLM
               ? llm.status().map((m) => ({ name: m.name, problem: m.until > now() ? m.problem : null, lastUsedAt: m.lastUsedAt }))
               : modelChain(settings).map((m) => ({ name: `${m.provider}:${m.model}`, problem: "אין מפתח", lastUsedAt: 0 })),
@@ -373,6 +380,8 @@ async function main(): Promise<void> {
           if (str(b.geminiKey)) values.GEMINI_API_KEY = str(b.geminiKey);
           if (str(b.pexelsKey)) values.PEXELS_API_KEY = str(b.pexelsKey);
           if (str(b.anthropicKey)) values.ANTHROPIC_API_KEY = str(b.anthropicKey);
+          if (str(b.cfAccount)) values.CLOUDFLARE_ACCOUNT_ID = str(b.cfAccount).replace(/[^A-Za-z0-9]/g, "");
+          if (str(b.cfToken)) values.CLOUDFLARE_API_TOKEN = str(b.cfToken);
           if (values.BOT_PHONE && env.botPhone && values.BOT_PHONE !== env.botPhone && isLinked()) {
             clearSession(); // a different bot number needs a new link
           }

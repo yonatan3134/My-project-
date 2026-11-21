@@ -92,10 +92,14 @@ const SettingsSchema = z.object({
   images: z
     .object({
       enabled: z.boolean().default(true),
+      /** pictures a day from paid services (Gemini) */
       maxPerDay: z.number().int().min(0).default(15),
+      /** pictures a day from the free services */
+      freeMaxPerDay: z.number().int().min(0).default(60),
       models: z.array(z.string()).default(["auto"]),
+      providers: z.array(z.enum(["gemini", "cloudflare", "pollinations", "horde"])).default(["gemini", "cloudflare", "pollinations", "horde"]),
     })
-    .default({ enabled: true, maxPerDay: 15, models: ["auto"] }),
+    .default({ enabled: true, maxPerDay: 15, freeMaxPerDay: 60, models: ["auto"], providers: ["gemini", "cloudflare", "pollinations", "horde"] }),
   effort: z.enum(["low", "medium", "high"]).default("medium"),
   /** "3 posts one hour apart, then a 2 hour pause" */
   cycle: z

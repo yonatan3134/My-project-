@@ -65,8 +65,15 @@
   "images": {
     "enabled": true,
     "maxPerDay": 15,
+    "freeMaxPerDay": 60,
     "models": [
       "auto"
+    ],
+    "providers": [
+      "gemini",
+      "cloudflare",
+      "pollinations",
+      "horde"
     ]
   }
 }
