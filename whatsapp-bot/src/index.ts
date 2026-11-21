@@ -14,7 +14,7 @@ import { ffmpegAvailable } from "./media/video.js";
 import { AUTH_DIR, DB_PATH, TMP_DIR, ensureDirs } from "./paths.js";
 import { updateEnvFile } from "./panel/envfile.js";
 import { startPanel } from "./panel/server.js";
-import { Scheduler, postingChannels } from "./scheduler.js";
+import { Scheduler, postingChannels, type CountdownEvent } from "./scheduler.js";
 import { HOUR, MINUTE, dayKey, sleep } from "./time.js";
 import { canPost, fetchChannelPosts, recentPostTexts, resolveChannels } from "./wa/channels.js";
 import { recordChannelEngagement } from "./engagement.js";
@@ -116,6 +116,11 @@ async function main(): Promise<void> {
   });
 
   const control = new Control({
+    sendNow: (id: string, prompt: string) => {
+      const c = config.channels.find((x) => x.id === id);
+      if (!c || !gen) return Promise.resolve({ error: "לא אפשרי כרגע" });
+      return writeNow(gen, c, prompt, now());
+    },
     store,
     config,
     scheduler,
@@ -130,6 +135,11 @@ async function main(): Promise<void> {
     const sock = client?.sock;
     if (!client?.isOpen || !sock) return;
     const reports = await resolveChannels(sock, store, config.channels, now(), { maxAgeMs });
+    // round follower counts are celebrated in the channel
+    for (const c of postingChannels(config.channels)) {
+      const f = store.followers(c.id).count;
+      if (f !== null) scheduler.milestone(c, f, now());
+    }
     const bad = reports.filter((r) => r.status !== "ok");
     logger.info({ ok: reports.length - bad.length, problems: bad.length }, "channels checked");
     if (bad.length > 0) {
@@ -244,6 +254,7 @@ async function main(): Promise<void> {
   };
 
   const startedAt = now();
+  let lastProblemSync = now();
   const timers = [
     setInterval(guard("tick", () => scheduler.tick()), 15_000),
     setInterval(guard("refill", refillAll), 90_000),
@@ -251,6 +262,12 @@ async function main(): Promise<void> {
     setInterval(
       guard("watch", async () => {
         await control.maybeDailyReport();
+        // new channels, and channels where the bot just became an admin, are picked up within minutes
+        scheduler.countdowns(loadEvents(), now());
+        if (now() - lastProblemSync > 5 * MINUTE) {
+          lastProblemSync = now();
+          await syncChannels(24 * HOUR);
+        }
         if (client && !client.isOpen && client.status !== "logged_out" && now() - Math.max(client.lastOpenAt, startedAt) > 10 * MINUTE) {
           await control.alert("disconnected", "הבוט לא מצליח להתחבר לוואטסאפ כבר יותר מ-10 דקות. הוא ממשיך לנסות.", HOUR);
         }
@@ -259,6 +276,14 @@ async function main(): Promise<void> {
     ),
   ];
   guard("refill", refillAll)();
+
+  const loadEvents = (): CountdownEvent[] => {
+    try {
+      return JSON.parse(store.get("events") ?? "[]") as CountdownEvent[];
+    } catch {
+      return [];
+    }
+  };
 
   // ---- settings website ------------------------------------------------------
 
@@ -294,6 +319,18 @@ async function main(): Promise<void> {
             growth: scheduler.growth(),
             gradual: scheduler.gradual(),
             knowledgeFiles: knowledgeFiles(),
+            milestones: store.get("milestones") !== "0",
+            events: loadEvents(),
+            // a message scheduled for many channels is shown once
+            scheduled: [...store.scheduledList(500).reduce((groups, r) => {
+              const key = `${r.not_before}|${preview(r.payload)}`;
+              const g = groups.get(key) ?? { ids: [] as number[], names: [] as string[], at: r.not_before, text: preview(r.payload) };
+              g.ids.push(r.id);
+              g.names.push(config.channels.find((c) => c.id === r.channel_id)?.name ?? r.channel_id);
+              return groups.set(key, g);
+            }, new Map<string, { ids: number[]; names: string[]; at: number; text: string }>()).values()].map((g) => ({
+              ids: g.ids, at: g.at, text: g.text, channel: g.names.length > 1 ? `${g.names.length} ערוצים` : (g.names[0] ?? ""),
+            })),
             hasClaude: env.hasAnthropicKey,
             models: llm instanceof FallbackLLM
               ? llm.status().map((m) => ({ name: m.name, problem: m.until > now() ? m.problem : null, lastUsedAt: m.lastUsedAt }))
@@ -316,6 +353,7 @@ async function main(): Promise<void> {
                 why: scheduler.explain(c, now()),
                 approve: store.get(`approve:${c.id}`) === "1",
                 knowledge: store.get(`knowledge:${c.id}`) ?? "",
+                shabbat: scheduler.shabbat(c.id),
                 perf: store.kindPerformance(c.id, now()),
               };
             }),
@@ -485,6 +523,53 @@ async function main(): Promise<void> {
           const st = store.channel(c.id);
           if (!st.jid || !canPost(st.role)) return { error: "הבוט לא מנהל בערוץ הזה (או שהוא עוד לא נמצא)" };
           return writeNow(gen, c, prompt, now());
+        },
+        setShabbat: (id, on) => {
+          if (!config.channels.some((c) => c.id === id)) return "ערוץ לא קיים";
+          store.set(`shabbat:${id}`, on ? "1" : "0");
+          return null;
+        },
+        setMilestones: (on) => store.set("milestones", on ? "1" : "0"),
+        recheck: () => {
+          store.db.prepare("UPDATE channels SET resolved_at = 0").run();
+          lastProblemSync = 0;
+          return null;
+        },
+        schedule: (channel, at, text) => {
+          const t = text.trim();
+          if (t.length < 2) return "ההודעה ריקה";
+          if (!Number.isFinite(at) || at < now() - MINUTE) return "הזמן שבחרת כבר עבר";
+          const targets = channel === "all" ? config.channels.filter((c) => c.enabled && c.mode !== "off") : config.channels.filter((c) => c.id === channel);
+          if (targets.length === 0) return "ערוץ לא קיים";
+          for (const c of targets) store.enqueue({ channelId: c.id, payload: { kind: "text", text: t }, notBefore: at, isFollowup: true, manual: true, now: now() });
+          return null;
+        },
+        edit: (id, text) => {
+          const row = store.queueRow(id);
+          if (!row || !["ready", "pending"].includes(row.status)) return "הפוסט כבר לא בתור";
+          const t = text.trim();
+          if (t.length < 2) return "הטקסט ריק";
+          const p = row.payload;
+          if (p.kind === "poll") {
+            const [q, ...opts] = t.split("|").map((x) => x.trim()).filter(Boolean);
+            if (!q || opts.length < 2) return 'בסקר כותבים: שאלה | תשובה 1 | תשובה 2';
+            store.updatePayload(id, { ...p, pollQuestion: q, pollOptions: opts.slice(0, 6) });
+          } else store.updatePayload(id, { ...p, text: t });
+          return null;
+        },
+        setEvents: (events) => {
+          const clean = events
+            .map((e, i) => ({
+              id: String(e.id || `ev${Date.now()}${i}`),
+              name: String(e.name ?? "").trim().slice(0, 80),
+              date: String(e.date ?? ""),
+              channel: String(e.channel || "all"),
+              hour: Math.min(23, Math.max(0, Number(e.hour ?? 17) || 0)),
+              text: String(e.text ?? "").trim().slice(0, 500),
+            }))
+            .filter((e) => e.name && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
+          store.set("events", JSON.stringify(clean));
+          return null;
         },
         broadcast: (text) => {
           const t = text.trim();

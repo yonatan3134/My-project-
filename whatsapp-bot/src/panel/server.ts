@@ -41,6 +41,12 @@ export interface PanelApi {
   sendNow(id: string, prompt: string): Promise<{ text: string } | { error: string }>;
   flush(id: string): string | null;
   broadcast(text: string): string | null;
+  setShabbat(id: string, on: boolean): string | null;
+  setMilestones(on: boolean): void;
+  recheck(): string | null;
+  schedule(channel: string, at: number, text: string): string | null;
+  edit(id: number, text: string): string | null;
+  setEvents(events: Record<string, unknown>[]): string | null;
   push(id: string, message: string): string | null;
   discard(id: number): string | null;
 }
@@ -159,6 +165,24 @@ export function startPanel(api: PanelApi, port: number): http.Server {
             const r = await api.sendNow(String(body.id ?? ""), String(body.prompt ?? "").slice(0, 300));
             return send(res, "error" in r ? 400 : 200, r);
           }
+          case "/api/shabbat":
+            error = api.setShabbat(String(body.id ?? ""), body.on === true);
+            break;
+          case "/api/milestones":
+            api.setMilestones(body.on === true);
+            break;
+          case "/api/recheck":
+            error = api.recheck();
+            break;
+          case "/api/schedule":
+            error = api.schedule(String(body.channel ?? ""), Number(body.at), String(body.text ?? "").slice(0, 3000));
+            break;
+          case "/api/edit":
+            error = api.edit(Number(body.id), String(body.text ?? "").slice(0, 3000));
+            break;
+          case "/api/events":
+            error = api.setEvents(Array.isArray(body.events) ? (body.events as Record<string, unknown>[]).slice(0, 50) : []);
+            break;
           case "/api/broadcast":
             error = api.broadcast(String(body.text ?? "").slice(0, 3000));
             break;

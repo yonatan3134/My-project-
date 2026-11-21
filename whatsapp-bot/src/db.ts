@@ -467,6 +467,14 @@ export class Store {
     ).run(now, now, channelId).changes;
   }
 
+  /** Messages the owner scheduled for later from the website. */
+  scheduledList(limit: number): { id: number; channel_id: string; not_before: number; payload: PostPayload }[] {
+    const rows = this.q(
+      "SELECT id, channel_id, not_before, payload FROM queue WHERE status = 'ready' AND manual = 1 AND not_before > ? ORDER BY not_before LIMIT ?",
+    ).all(Date.now() + 60_000, limit) as { id: number; channel_id: string; not_before: number; payload: string }[];
+    return rows.map((r) => ({ ...r, payload: JSON.parse(r.payload) as PostPayload }));
+  }
+
   // ---- approval ---------------------------------------------------------
 
   /** Posts the generator has made that are not sent yet (waiting in the queue or for approval). */

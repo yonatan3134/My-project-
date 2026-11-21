@@ -63,6 +63,25 @@ export const PAGE = `<!doctype html>
     <div class="row" style="margin-top:8px"><button id="bcBtn">📢 לשלוח לכל הערוצים</button></div>
   </section>
 
+  <section class="card">
+    <h2>🗓️ הודעה מתוזמנת</h2>
+    <p class="hint">נכתבת עכשיו ויוצאת בדיוק בזמן שבוחרים, לערוץ אחד או לכולם.</p>
+    <div class="grid2"><div><label>ערוץ</label><select id="schCh"></select></div><div><label>מתי</label><input id="schAt" type="datetime-local"></div></div>
+    <label>ההודעה</label><textarea id="schText"></textarea>
+    <div class="row" style="margin-top:8px"><button id="schBtn">🗓️ לתזמן</button></div>
+    <div id="schList" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card">
+    <h2>📅 ספירה לאחור לאירועים</h2>
+    <p class="hint">שבוע לפני האירוע, כל יום פוסט "עוד X ימים ל...", וביום עצמו "היום!". למשל עונה חדשה בבראול או גמר האח הגדול.</p>
+    <div id="evList"></div>
+    <div class="grid2"><div><label>שם האירוע</label><input id="evName" placeholder="למשל: העונה החדשה בבראול"></div><div><label>תאריך</label><input id="evDate" type="date"></div></div>
+    <div class="grid2"><div><label>ערוץ</label><select id="evCh"></select></div><div><label>מאיזו שעה לפרסם</label><input id="evHour" type="number" min="0" max="23" value="17"></div></div>
+    <label>טקסט נוסף (לא חובה)</label><input id="evText">
+    <div class="row" style="margin-top:8px"><button class="light" id="evAdd">➕ להוסיף אירוע</button></div>
+  </section>
+
   <section class="card" id="pendingCard" style="display:none">
     <h2>✅ מחכים לאישור שלך</h2>
     <p class="hint">בערוצים שבהם הפעלת "אישור לפני פרסום". ✅ = יפורסם בזמן הבא של הערוץ. 🗑 = נמחק.</p>
@@ -91,6 +110,7 @@ export const PAGE = `<!doctype html>
       <li>פעם ביום כל ערוץ ממליץ על ערוץ אחר שלך, עם קישור</li>
     </ul>
     <button id="growthBtn"></button>
+    <label style="margin-top:12px"><input type="checkbox" id="msBox" style="width:auto"> 🎉 לחגוג מספרים עגולים של עוקבים (100, 500, 1,000...) בפוסט בערוץ</label>
   </section>
 
   <section class="card">
@@ -130,6 +150,7 @@ export const PAGE = `<!doctype html>
       <div class="row" style="margin-top:8px"><button class="light" id="importBtn">לעדכן את הרשימה</button></div>
     </details>
     <div id="channels"></div>
+    <div class="row"><button class="light" id="recheckBtn">🔄 לבדוק שוב את כל הערוצים בוואטסאפ</button></div>
     <div class="row"><button class="light" id="addCh">➕ ערוץ חדש</button><button id="saveCh">שמירת הערוצים</button></div>
   </section>
 </main>
@@ -181,6 +202,15 @@ function render() {
   if (keep && posting.some((c) => c.id === keep)) qSel.value = keep;
   if (!loadQueue.loaded) { loadQueue.loaded = true; loadQueue(); }
   $("pendingCard").style.display = s.pendingTotal ? "" : "none";
+  $("msBox").checked = s.milestones;
+  const chOpts = '<option value="all">📢 כל הערוצים</option>' + s.channels.filter((c) => c.enabled && c.mode !== "off").map((c) => '<option value="' + esc(c.id) + '">' + esc(c.name) + "</option>").join("");
+  for (const id of ["schCh", "evCh"]) { const el = $(id), v = el.value; if (!el.dataset.filled || el.options.length !== s.channels.length + 1) { el.innerHTML = chOpts; el.dataset.filled = "1"; if (v) el.value = v; } }
+  $("schList").innerHTML = s.scheduled.map((x) => '<div class="post"><div class="t">' + esc(x.text) + "<small>" + esc(x.channel) + " · " + new Date(x.at).toLocaleString("he-IL", { weekday:"short", day:"numeric", month:"numeric", hour:"2-digit", minute:"2-digit" }) + '</small></div><button class="danger" data-ids="' + x.ids.join(",") + '">🗑</button></div>').join("");
+  document.querySelectorAll("#schList button").forEach((b) => b.onclick = async () => {
+    try { for (const id of b.dataset.ids.split(",")) await post("/api/discard", { id: Number(id) }); toast("בוטל"); load(); } catch (e) { toast(e.message); }
+  });
+  $("evList").innerHTML = s.events.map((e, i) => '<div class="post"><div class="t">📅 ' + esc(e.name) + "<small>" + esc(e.date) + " · " + esc(e.channel === "all" ? "כל הערוצים" : (s.channels.find((c) => c.id === e.channel) || {}).name || e.channel) + " · מ-" + e.hour + ':00</small></div><button class="danger" data-i="' + i + '">🗑</button></div>').join("");
+  document.querySelectorAll("#evList button").forEach((b) => b.onclick = async () => { const list = S.events.filter((_, i) => i !== Number(b.dataset.i)); try { await post("/api/events", { events: list }); load(); } catch (e) { toast(e.message); } });
   if (s.pendingTotal && s.pendingTotal !== loadPending.last) { loadPending.last = s.pendingTotal; loadPending(); }
   $("events").innerHTML = s.problems.map((p) => "<li>" + esc(p) + "</li>").join("");
   $("keyState").innerHTML = s.hasKey ? pill(true, "שמור") : pill(false, "חסר");
@@ -249,6 +279,7 @@ function renderChannels(list) {
       '<label>טקסט קבוע שיישלח כמו שהוא (למשל "תעקבו ותזמינו חברים!")</label><textarea class="spT">' + esc(sp.text ?? "") + "</textarea>" +
       '<label>או: הוראה ל-AI (למשל "חידה קשה במיוחד" או "סקר על הדמות הכי אהובה")</label><textarea class="spP">' + esc(sp.prompt ?? "") + "</textarea>" +
       (live ? '<h3 style="font-size:15px;margin:14px 0 0">🛡️ אישור לפני פרסום</h3><label><input type="checkbox" class="appr" style="width:auto"' + (c.approve ? " checked" : "") + '> כל פוסט מחכה לאישור שלי באתר לפני שהוא יוצא</label>' : "") +
+      (live ? '<label style="margin-top:10px"><input type="checkbox" class="shab" style="width:auto"' + (c.shabbat ? " checked" : "") + '> 🕯️ לא לפרסם בשבת (משישי אחה"צ עד מוצאי שבת, בערך)</label>' : "") +
       '<h3 style="font-size:15px;margin:14px 0 0">📈 מה עובד בערוץ</h3>' + perfHtml(c.perf) +
       (live && S.knowledgeFiles.length ? '<h3 style="font-size:15px;margin:14px 0 0">📚 קובץ ידע לחידות</h3>' +
         '<p class="hint" style="margin:4px 0">כשבוחרים קובץ, רוב הפוסטים בערוץ הופכים לחידות, טריוויה ו"מי אני?" מתוך הקובץ, והתשובה יוצאת אחרי חצי שעה.</p>' +
@@ -283,6 +314,10 @@ function renderChannels(list) {
         "<br>עכשיו פותחים את הערוץ בטלפון ובודקים מה באמת הופיע. מה שסומן ✅ ולא מופיע, וואטסאפ לא הציגה.";
     } catch (e) { out.textContent = e.message; }
     b.disabled = false;
+  });
+  document.querySelectorAll(".ch .shab").forEach((b) => b.onchange = async () => {
+    const id = b.closest(".ch").dataset.id;
+    try { await post("/api/shabbat", { id, on: b.checked }); toast(b.checked ? "🕯️ הערוץ לא יפרסם בשבת" : "הערוץ יפרסם גם בשבת"); } catch (e) { toast(e.message); b.checked = !b.checked; }
   });
   document.querySelectorAll(".ch .kb").forEach((sel) => sel.onchange = async () => {
     const id = sel.closest(".ch").dataset.id;
@@ -393,14 +428,34 @@ async function loadQueue() {
     const r = await fetch("/api/queue?channel=" + encodeURIComponent(id), { cache:"no-store" });
     const list = await r.json();
     $("queue").innerHTML = list.length ? list.map((p) =>
-      '<div class="post"><div class="t">' + esc(p.text) + '</div><button class="danger" data-id="' + p.id + '" title="למחוק">🗑</button></div>').join("")
+      '<div class="post"><div class="t">' + esc(p.text) + '</div><button class="light ed" data-id="' + p.id + '" data-kind="' + esc(p.kind) + '" title="לערוך" style="padding:6px 10px">✏️</button><button class="danger" data-id="' + p.id + '" title="למחוק">🗑</button></div>').join("")
       : '<p class="hint">אין כרגע פוסטים בתור. הבוט כותב חדשים תוך כמה דקות.</p>';
-    document.querySelectorAll("#queue button[data-id]").forEach((b) => b.onclick = async () => {
+    document.querySelectorAll("#queue .ed").forEach((b) => b.onclick = async (ev) => {
+      ev.stopPropagation();
+      const cur = b.closest(".post").querySelector(".t").textContent;
+      const isPoll = b.dataset.kind === "poll";
+      const t = prompt(isPoll ? "עריכת סקר. כותבים: שאלה | תשובה 1 | תשובה 2" : "עריכת הפוסט:", isPoll ? "" : cur);
+      if (t === null) return;
+      try { await post("/api/edit", { id: Number(b.dataset.id), text: t }); toast("נשמר ✏️"); loadQueue(); } catch (e) { toast(e.message); }
+    });
+    document.querySelectorAll("#queue button.danger[data-id]").forEach((b) => b.onclick = async () => {
       try { await post("/api/discard", { id: Number(b.dataset.id) }); b.closest(".post").remove(); toast("נמחק"); } catch (e) { toast(e.message); }
     });
   } catch { $("queue").innerHTML = '<p class="hint">לא הצלחתי לטעון</p>'; }
 }
 $("qCh").onchange = loadQueue;
+$("msBox").onchange = async () => { try { await post("/api/milestones", { on: $("msBox").checked }); } catch (e) { toast(e.message); } };
+$("recheckBtn").onclick = async () => { try { await post("/api/recheck"); toast("🔄 הבוט בודק את כל הערוצים מחדש. זה לוקח דקה-שתיים"); } catch (e) { toast(e.message); } };
+["schText", "schAt", "evName", "evDate", "evText", "evHour"].forEach((id) => $(id).addEventListener("input", () => editing = true));
+$("schBtn").onclick = async () => {
+  const at = new Date($("schAt").value).getTime();
+  try { await post("/api/schedule", { channel: $("schCh").value, at, text: $("schText").value }); $("schText").value = ""; editing = false; toast("🗓️ תוזמן"); load(); } catch (e) { toast(e.message); }
+};
+$("evAdd").onclick = async () => {
+  const ev = { name: $("evName").value, date: $("evDate").value, channel: $("evCh").value, hour: Number($("evHour").value || 17), text: $("evText").value };
+  if (!ev.name || !ev.date) { toast("צריך שם ותאריך"); return; }
+  try { await post("/api/events", { events: S.events.concat([ev]) }); $("evName").value = ""; $("evText").value = ""; editing = false; toast("📅 נוסף"); load(); } catch (e) { toast(e.message); }
+};
 $("bcText").addEventListener("input", () => editing = true);
 $("bcBtn").onclick = async () => {
   const text = $("bcText").value.trim();

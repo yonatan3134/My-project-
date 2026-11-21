@@ -386,3 +386,56 @@ test("a message to all channels reaches every channel the bot runs, not paused o
   assert.deepEqual(sender.log.map((s) => s.jid).sort(), ["sim-a@newsletter", "sim-b@newsletter", "sim-d@newsletter"]);
   assert.ok(sender.log.every((s) => s.body === "🎉 תודה לכולם!"));
 });
+
+import { inShabbat } from "../scheduler.js";
+
+test("Shabbat mode: no posts from Friday afternoon to Saturday night in that channel only", async () => {
+  const tz = "Asia/Jerusalem";
+  assert.equal(inShabbat(Date.parse("2026-11-20T13:00:00Z"), tz), false); // Fri 15:00 (winter)
+  assert.equal(inShabbat(Date.parse("2026-11-20T15:00:00Z"), tz), true); // Fri 17:00
+  assert.equal(inShabbat(Date.parse("2026-11-21T14:00:00Z"), tz), true); // Sat 16:00
+  assert.equal(inShabbat(Date.parse("2026-11-21T16:30:00Z"), tz), false); // Sat 18:30
+  assert.equal(inShabbat(Date.parse("2026-07-03T16:00:00Z"), tz), true); // Fri 19:00 (summer)
+  assert.equal(inShabbat(Date.parse("2026-11-19T15:00:00Z"), tz), false); // Thursday
+
+  const config = makeConfig([{ id: "s", mode: "creative", formats: { text: 1, poll: 0, image: 0, video: 0 } }, { id: "o", mode: "creative", formats: { text: 1, poll: 0, image: 0, video: 0 } }]);
+  const store = new Store(":memory:");
+  store.set("shabbat:s", "1");
+  const sender = new ScriptedSender();
+  const fri = Date.parse("2026-11-19T22:00:00Z"); // Friday 00:00 in Israel
+  const { store: st } = await simulate({ config, days: 2, start: fri, sender, store });
+  const sent = st.db.prepare("SELECT channel_id, sent_at FROM queue WHERE status = 'sent'").all() as { channel_id: string; sent_at: number }[];
+  assert.equal(sent.filter((r) => r.channel_id === "s" && inShabbat(r.sent_at, tz)).length, 0);
+  assert.ok(sent.filter((r) => r.channel_id === "o" && inShabbat(r.sent_at, tz)).length > 3, "other channels keep posting");
+});
+
+test("follower milestones are celebrated once, and old ones are not celebrated late", () => {
+  const config = makeConfig([{ id: "m", mode: "creative" }]);
+  const store = new Store(":memory:");
+  const scheduler = new Scheduler({ store, config, sender: new ScriptedSender(), media: stubMedia, now: () => START, isConnected: () => true });
+  const ch = config.channels[0]!;
+  assert.equal(scheduler.milestone(ch, 730, START), false, "first look only sets the starting point");
+  assert.equal(scheduler.milestone(ch, 990, START), false);
+  assert.equal(scheduler.milestone(ch, 1004, START), true);
+  assert.equal(scheduler.milestone(ch, 1010, START), false, "not twice");
+  const text = JSON.parse((store.db.prepare("SELECT payload FROM queue").get() as { payload: string }).payload).text as string;
+  assert.match(text, /הגענו ל-1,000 עוקבים/);
+  assert.match(text, /נגיע ל-2,000/);
+});
+
+test("countdown events post once a day in the last week and on the day", () => {
+  const config = makeConfig([{ id: "a", mode: "creative" }, { id: "b", mode: "creative" }]);
+  const store = new Store(":memory:");
+  for (const c of config.channels) store.updateChannel(c.id, { jid: `sim-${c.id}@newsletter`, role: "ADMIN", resolved_at: START });
+  const scheduler = new Scheduler({ store, config, sender: new ScriptedSender(), media: stubMedia, now: () => START, isConnected: () => true });
+  const ev = { id: "e1", name: "העונה החדשה", date: "2026-11-24", channel: "all", hour: 17 };
+  const at = (iso: string) => Date.parse(iso);
+  assert.equal(scheduler.countdowns([ev], at("2026-11-21T10:00:00Z")), 0, "before 17:00");
+  assert.equal(scheduler.countdowns([ev], at("2026-11-21T16:00:00Z")), 2, "18:00 Israel: one post per channel");
+  assert.equal(scheduler.countdowns([ev], at("2026-11-21T18:00:00Z")), 0, "once a day");
+  assert.equal(scheduler.countdowns([ev], at("2026-11-24T16:00:00Z")), 2);
+  assert.equal(scheduler.countdowns([ev], at("2026-11-25T16:00:00Z")), 0, "after the event");
+  const texts = (store.db.prepare("SELECT payload FROM queue").all() as { payload: string }[]).map((r) => JSON.parse(r.payload).text as string);
+  assert.ok(texts.some((t) => t.includes("עוד 3 ימים להעונה החדשה")));
+  assert.ok(texts.some((t) => t.includes("היום: העונה החדשה")));
+});
