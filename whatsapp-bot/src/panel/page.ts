@@ -136,6 +136,8 @@ export const PAGE = `<!doctype html>
     <details style="margin-top:10px"><summary class="hint">עוד הגדרות (לא חובה)</summary>
       <label>שם להתראות באפליקציית ntfy</label><input id="ntfyTopic" class="ltr" placeholder="שם ארוך וקשה לניחוש">
       <label>מפתח Claude, כגיבוי כש-Gemini לא זמין <span id="claudeState"></span></label><input id="anthropicKey" type="password" class="ltr" placeholder="להשאיר ריק כדי לא לשנות" autocomplete="off">
+      <label>Cloudflare לתמונות AI בחינם (Account ID) <span id="cfState"></span></label><input id="cfAccount" class="ltr" placeholder="להשאיר ריק כדי לא לשנות">
+      <label>Cloudflare API Token</label><input id="cfToken" type="password" class="ltr" placeholder="להשאיר ריק כדי לא לשנות" autocomplete="off">
       <label>מפתח Pexels לרקעים <span id="pexelsState"></span></label><input id="pexelsKey" type="password" class="ltr" placeholder="להשאיר ריק כדי לא לשנות" autocomplete="off">
     </details>
     <div class="row" style="margin-top:14px"><button id="saveSettings">שמירה</button><span class="hint">אחרי שמירה הבוט מופעל מחדש (כ-10 שניות)</span></div>
@@ -217,7 +219,10 @@ function render() {
   $("claudeState").innerHTML = s.hasClaude ? pill(true, "שמור") : "";
   $("models").innerHTML = s.models.map((m, i) => '<div class="post"><div class="t ltr">' + (i + 1) + ". " + esc(m.name) +
     (m.problem ? '<small style="color:var(--bad)">' + esc(m.problem) + "</small>" : m.lastUsedAt ? "<small>עובד ✓</small>" : "<small>מוכן</small>") + "</div></div>").join("");
-  $("imgs").textContent = s.images.enabled ? "🎨 תמונות AI היום: " + s.images.today + " מתוך " + s.images.max + " (אחרי זה: תמונה עם רקע צבעוני)" : "🎨 תמונות AI כבויות (אין מפתח Gemini)";
+  const PN = { gemini:"Gemini", cloudflare:"Cloudflare", pollinations:"Pollinations (חינם)", horde:"AI Horde (חינם, איטי)" };
+  $("imgs").innerHTML = "🎨 תמונות AI היום: " + s.images.today + " · שירותים לפי הסדר:<br>" +
+    s.images.providers.map((p, i) => (i + 1) + ". " + PN[p.name] + ' – <span style="color:' + (p.status.startsWith("עובד") ? "var(--ok)" : p.status.startsWith("שגיאה") ? "var(--bad)" : "var(--muted)") + '">' + esc(p.status) + "</span>").join("<br>");
+  $("cfState").innerHTML = s.hasCloudflare ? pill(true, "שמור") : "";
   $("pexelsState").innerHTML = s.hasPexels ? pill(true, "שמור") : "";
 
   let wa = "";
@@ -411,6 +416,8 @@ $("saveSettings").onclick = async () => {
   if ($("geminiKey").value.trim()) body.geminiKey = $("geminiKey").value.trim();
   if ($("pexelsKey").value.trim()) body.pexelsKey = $("pexelsKey").value.trim();
   if ($("anthropicKey").value.trim()) body.anthropicKey = $("anthropicKey").value.trim();
+  if ($("cfAccount").value.trim()) body.cfAccount = $("cfAccount").value.trim();
+  if ($("cfToken").value.trim()) body.cfToken = $("cfToken").value.trim();
   try { await post("/api/settings", body); $("geminiKey").value = ""; $("pexelsKey").value = ""; $("anthropicKey").value = ""; waitRestart("נשמר."); } catch (e) { toast(e.message); }
 };
 ["botPhone", "ownerPhone", "ntfyTopic"].forEach((id) => $(id).addEventListener("input", () => editing = true));

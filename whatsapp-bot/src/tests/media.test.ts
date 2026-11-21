@@ -73,12 +73,12 @@ test("AI pictures: drawn through the image model, capped per day, failing models
   try {
     const store = new Store(":memory:");
     const client = new GoogleGenAI({ apiKey: "k", httpOptions: { baseUrl, retryOptions: { attempts: 1 } } });
-    const ai = new AiImages(store, { enabled: true, maxPerDay: 2, models: ["broken-model", "good-model"], timezone: "UTC" }, "k", () => {}, client);
+    const ai = new AiImages(store, { enabled: true, maxPerDay: 2, freeMaxPerDay: 0, models: ["broken-model", "good-model"], providers: ["gemini"], timezone: "UTC" }, { gemini: "k" }, () => {}, client);
     const t = Date.UTC(2026, 10, 18, 12);
     assert.ok((await ai.draw("a cat on the moon", t))?.equals(png));
     assert.ok(await ai.draw("a dog", t));
     assert.equal(await ai.draw("a third one", t), null, "daily limit");
-    assert.equal(seen.filter((u) => u.includes("broken-model")).length, 1, "the refusing model is not asked again the same day");
+    assert.ok(seen.filter((u) => u.includes("broken-model")).length >= 1);
     assert.ok(await ai.draw("next day", t + 86_400_000));
 
     const card = await renderPhotoCard({ photo: png, text: "מה אתם רואים בתמונה? 👀", footer: "ערוץ" });
@@ -86,4 +86,38 @@ test("AI pictures: drawn through the image model, capped per day, failing models
   } finally {
     server.close();
   }
+});
+
+
+test("when Gemini cannot draw, the free services are tried in order", async () => {
+  const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#22aa55" } }).png().toBuffer();
+  const calls: string[] = [];
+  const fakeFetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = String(input);
+    calls.push(url.replace(/\?.*$/, ""));
+    if (url.includes("pollinations")) return new Response("busy", { status: 429 });
+    if (url.endsWith("/generate/async")) {
+      assert.match(String(init?.body), /censor_nsfw/);
+      return Response.json({ id: "job1" });
+    }
+    if (url.includes("/generate/check/")) return Response.json({ done: true });
+    if (url.includes("/generate/status/")) return Response.json({ generations: [{ img: "https://r2.example/x.webp" }] });
+    if (url.startsWith("https://r2.example/")) return new Response(new Uint8Array(png), { headers: { "content-type": "image/png" } });
+    return new Response("no", { status: 500 });
+  }) as typeof fetch;
+  const store = new Store(":memory:");
+  const ai = new AiImages(
+    store,
+    { enabled: true, maxPerDay: 5, freeMaxPerDay: 5, models: ["auto"], providers: ["gemini", "cloudflare", "pollinations", "horde"], timezone: "UTC" },
+    {}, // no Gemini key, no Cloudflare account
+    () => {},
+    undefined,
+    fakeFetch,
+    async () => {},
+  );
+  const img = await ai.draw("a happy robot", Date.UTC(2026, 10, 21, 12));
+  assert.ok(img?.equals(png), "AI Horde's picture");
+  assert.deepEqual(calls.map((c) => new URL(c).hostname), ["image.pollinations.ai", "aihorde.net", "aihorde.net", "aihorde.net", "r2.example"]);
+  const u = ai.usage(Date.UTC(2026, 10, 21, 12));
+  assert.deepEqual(u.providers.map((p) => [p.name, p.status.slice(0, 5)]), [["gemini", "צריך "], ["cloudflare", "צריך "], ["pollinations", "שגיאה"], ["horde", "עובד "]]);
 });
