@@ -54,13 +54,15 @@ export async function resolveChannels(
   store: Store,
   channels: ChannelConfig[],
   now: number,
-  opts: { maxAgeMs?: number; gapMs?: number } = {},
+  opts: { maxAgeMs?: number; problemAgeMs?: number; gapMs?: number } = {},
 ): Promise<ResolveReport[]> {
   const reports: ResolveReport[] = [];
   for (const c of channels) {
     if (c.mode === "off" || !c.enabled) continue;
     const state = store.channel(c.id);
-    if (opts.maxAgeMs && state.jid && state.resolved_at && now - state.resolved_at < opts.maxAgeMs) {
+    // a channel where the bot could not post yet is checked again soon: the owner may have just made it an admin
+    const fresh = canPost(state.role) ? opts.maxAgeMs : Math.min(opts.maxAgeMs ?? 0, opts.problemAgeMs ?? 10 * 60_000);
+    if (fresh && state.jid && state.resolved_at && now - state.resolved_at < fresh) {
       reports.push({ id: c.id, name: c.name, status: canPost(state.role) ? "ok" : "not_admin", detail: state.role ?? "" });
       continue;
     }

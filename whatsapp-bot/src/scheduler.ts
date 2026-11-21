@@ -6,6 +6,20 @@ import { DAY, HOUR, MINUTE, dayKey, hash32, hourOfDay } from "./time.js";
 import { canPost } from "./wa/channels.js";
 import type { SendResult, Sender } from "./wa/sender.js";
 
+export const MILESTONES = [100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 250000, 500000, 1000000];
+
+export interface CountdownEvent {
+  id: string;
+  name: string;
+  /** YYYY-MM-DD in the bot's time zone */
+  date: string;
+  /** a channel id, or "all" */
+  channel: string;
+  /** hour of day from which the day's post goes out */
+  hour: number;
+  text?: string;
+}
+
 export interface MediaMaker {
   image(payload: PostPayload, channel: ChannelConfig, seed: string): Promise<CardImage>;
   video(payload: PostPayload, channel: ChannelConfig, seed: string): Promise<VideoClip>;
@@ -89,6 +103,24 @@ export function minSpacingMs(cap: number | null): number {
 /** In growth mode the bot stays quiet at night: posts sent while followers sleep get buried and annoy. */
 export const GROWTH_QUIET = { from: 0, to: 7 };
 
+/**
+ * Roughly Shabbat in Israel: from Friday afternoon to Saturday night. The
+ * times are approximate (earlier in winter, later in summer), with a margin.
+ */
+export function inShabbat(now: number, tz: string): boolean {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit", month: "numeric", hourCycle: "h23" }).formatToParts(new Date(now));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const day = get("weekday");
+  const minutes = Number(get("hour")) * 60 + Number(get("minute"));
+  const month = Number(get("month"));
+  const summer = month >= 4 && month <= 10;
+  const start = summer ? 18 * 60 + 30 : 16 * 60; // Friday, before candle lighting
+  const end = summer ? 20 * 60 + 30 : 17 * 60 + 45; // Saturday, after Shabbat ends
+  if (day === "Fri") return minutes >= start;
+  if (day === "Sat") return minutes < end;
+  return false;
+}
+
 /** The general settings with this channel's own rhythm, when it has one. */
 export function channelSettings(channel: ChannelConfig, s: Settings): Settings {
   return channel.cycle ? { ...s, cycle: channel.cycle } : s;
@@ -161,6 +193,7 @@ export class Scheduler {
     if (channel.mode === "invasion") return { status: "ערוץ פלישה: מפרסם כשיש סקר בערוץ אחר", ok: true, next: null };
     if (this.isPaused()) return { status: "כל הפרסומים עצורים", ok: false, next: null };
     if (state.paused) return { status: "הערוץ עצור", ok: false, next: null };
+    if (this.shabbat(channel.id) && inShabbat(now, this.s.timezone)) return { status: "שבת: חוזר לפרסם במוצאי שבת", ok: true, next: null };
     if (!this.d.isConnected()) return { status: "הבוט לא מחובר לוואטסאפ", ok: false, next: null };
     if (!state.jid) return { status: "הערוץ עוד לא נמצא בוואטסאפ", ok: false, next: null };
     if (!canPost(state.role)) return { status: "הבוט לא מנהל בערוץ", ok: false, next: null };
@@ -185,6 +218,11 @@ export class Scheduler {
       return { status: "פעיל", ok: true, next: Math.max(slot, t) };
     }
     return { status: "פעיל", ok: true, next: null };
+  }
+
+  /** "No posts on Shabbat" switched on for this channel on the website. */
+  shabbat(channelId: string): boolean {
+    return this.d.store.get(`shabbat:${channelId}`) === "1";
   }
 
   growth(): boolean {
@@ -269,6 +307,7 @@ export class Scheduler {
         continue;
       }
       if (!row.manual && inQuietHours(this.s, now, this.growth())) continue;
+      if (!row.manual && this.shabbat(channel.id) && inShabbat(now, this.s.timezone)) continue;
       await this.publish(row, channel, state.jid, now);
       return true;
     }
@@ -295,6 +334,7 @@ export class Scheduler {
       store.updateChannel(channel.id, { last_slot_ts: slot });
       if (state.paused) continue;
       if (inQuietHours(this.s, now, this.growth())) continue;
+      if (this.shabbat(channel.id) && inShabbat(now, this.s.timezone)) continue;
       if (!state.jid) {
         store.event(now, "warn", "not_resolved", "channel address is not known yet", channel.id);
         continue;
@@ -484,6 +524,59 @@ export class Scheduler {
       n++;
     }
     return n;
+  }
+
+  /**
+   * Celebrates round follower counts (100, 250, 500, 1,000 ...). The first
+   * count seen for a channel only sets the starting point, so old milestones
+   * are not celebrated late. Returns true when a celebration was queued.
+   */
+  milestone(channel: ChannelConfig, followers: number, now: number): boolean {
+    const { store } = this.d;
+    if (store.get("milestones") === "0") return false;
+    const reached = MILESTONES.filter((m) => followers >= m).at(-1) ?? 0;
+    const key = `milestone:${channel.id}`;
+    const last = store.getNumber(key);
+    if (last === null || reached <= last) {
+      if (last === null) store.set(key, String(reached));
+      return false;
+    }
+    store.set(key, String(reached));
+    const next = MILESTONES.find((m) => m > reached);
+    const text = `🎉 *הגענו ל-${reached.toLocaleString("en-US")} עוקבים!*\n\nתודה לכל אחד ואחת מכם 💜${next ? `\nשתפו את הערוץ עם חברים ונגיע ל-${next.toLocaleString("en-US")} 🚀` : ""}\nhttps://whatsapp.com/channel/${channel.invite}`;
+    store.enqueue({ channelId: channel.id, payload: { kind: "text", text }, notBefore: now, isFollowup: true, now });
+    return true;
+  }
+
+  /**
+   * Countdown events from the website: in the last 7 days before an event
+   * each chosen channel gets one post a day ("עוד 3 ימים ל..."), and on the
+   * day itself "היום!". Posts go out from the event's hour on.
+   */
+  countdowns(events: CountdownEvent[], now: number): number {
+    const { store } = this.d;
+    const today = dayKey(now, this.s.timezone);
+    const hour = hourOfDay(now, this.s.timezone);
+    let queued = 0;
+    for (const ev of events) {
+      const days = Math.round((Date.parse(`${ev.date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / DAY);
+      if (days < 0 || days > 7 || hour < ev.hour) continue;
+      const key = `event_sent:${ev.id}:${today}`;
+      if (store.get(key)) continue;
+      store.set(key, "1");
+      const text =
+        days === 0
+          ? `🎉 *היום: ${ev.name}!*${ev.text ? `\n\n${ev.text}` : ""}`
+          : `⏳ *עוד ${days === 1 ? "יום אחד" : `${days} ימים`} ל${ev.name}!*${ev.text ? `\n\n${ev.text}` : ""}\n\nמי מחכה? 🔥`;
+      const targets = ev.channel === "all" ? this.d.config.channels.filter((c) => c.enabled && c.mode !== "off") : this.d.config.channels.filter((c) => c.id === ev.channel);
+      for (const c of targets) {
+        const st = store.channel(c.id);
+        if (!st.jid || !canPost(st.role) || st.paused) continue;
+        store.enqueue({ channelId: c.id, payload: { kind: "text", text }, notBefore: now, isFollowup: true, now });
+        queued++;
+      }
+    }
+    return queued;
   }
 
   /** Queues a call in the invasion channel pointing at `target`. Returns false when there is no usable invasion channel. */

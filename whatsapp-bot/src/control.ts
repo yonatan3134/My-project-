@@ -14,6 +14,8 @@ export interface ControlDeps {
   /** sends a private WhatsApp message; resolves false when it could not be sent */
   direct: (jid: string, text: string) => Promise<boolean>;
   connection: () => string;
+  /** writes one post from an instruction and sends it right away (the website's "send now") */
+  sendNow?: (channelId: string, prompt: string) => Promise<{ text: string } | { error: string }>;
 }
 
 const HELP = [
@@ -25,6 +27,8 @@ const HELP = [
   "ערוצים - רשימת הערוצים והמזהים שלהם",
   "פלישה <ערוץ> [אימוג'י] - קריאה לפלישה לערוץ",
   "נקה <ערוץ> - זורק את הפוסטים שמחכים בתור של הערוץ",
+  "שלח <ערוץ> [מה] - כותב ושולח עכשיו (למשל: שלח riddles חידה קשה)",
+  "לכולם <הודעה> - שולח את ההודעה לכל הערוצים",
 ].join("\n");
 
 export class Control {
@@ -222,7 +226,19 @@ export class Control {
     this.d.store.set("owner_chat_jid", chat);
     let reply: string;
     try {
-      reply = this.execute(text);
+      const [cmd, arg, ...more] = text.split(/\s+/);
+      if (cmd === "שלח" && this.d.sendNow) {
+        const c = this.findChannel(arg);
+        if (!c) reply = `לא מצאתי ערוץ "${arg ?? ""}". שלח: ערוצים`;
+        else {
+          const r = await this.d.sendNow(c.id, more.join(" ") || "חידה");
+          reply = "error" in r ? `❌ ${r.error}` : `⚡ יוצא עכשיו ל${c.name}:\n${r.text}`;
+        }
+      } else if (cmd === "לכולם") {
+        const msg = text.slice(text.indexOf(" ") + 1).trim();
+        const n = msg && text.includes(" ") ? this.d.scheduler.broadcast(msg, this.d.now()) : 0;
+        reply = n > 0 ? `📢 נשלח ל-${n} ערוצים` : "כותבים: לכולם <ההודעה>";
+      } else reply = this.execute(text);
     } catch (err) {
       reply = `שגיאה: ${(err as Error).message}`;
     }
