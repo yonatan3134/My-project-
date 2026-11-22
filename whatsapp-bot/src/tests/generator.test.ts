@@ -9,7 +9,7 @@ import { makeConfig } from "./helpers.js";
 const NOW = Date.UTC(2026, 10, 12, 10, 0, 0);
 
 function draft(over: Partial<Draft>): Draft {
-  return { kind: "text", text: "", poll_question: "", poll_options: [], card_text: "", visual_query: "", image_prompt: "", followup: "", topic_key: "", source_index: -1, ...over };
+  return { kind: "text", text: "", poll_question: "", poll_options: [], correct_option: "", card_text: "", visual_query: "", image_prompt: "", followup: "", topic_key: "", source_index: -1, ...over };
 }
 
 /** A model that returns exactly the drafts it is given and approves everything unless told otherwise. */

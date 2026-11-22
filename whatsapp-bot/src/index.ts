@@ -518,20 +518,22 @@ async function main(): Promise<void> {
             }
             await sleep(4000);
           };
-          await run("טקסט", () => sender.text(st.jid!, "🤖 בדיקה 1/4: הודעת טקסט מהבוט"));
-          await run("סקר", () => sender.poll(st.jid!, "🤖 בדיקה 2/4: הסקר הזה מופיע אצלכם?", ["כן", "לא"]));
-          await run("תמונה", async () => sender.image(st.jid!, await renderCard({ text: "בדיקה 3/4\nתמונה מהבוט 🖼️", footer: c.name, seed: "test" }), "🤖 בדיקה 3/4: תמונה"));
-          await run("סרטון", async () => sender.video(st.jid!, await media.video({ kind: "video", text: "", cardText: "בדיקה 4/4\nסרטון מהבוט 🎬" }, c, "test-video"), "🤖 בדיקה 4/4: סרטון"));
+          await run("טקסט", () => sender.text(st.jid!, "🤖 בדיקה 1/6: הודעת טקסט מהבוט"));
+          await run("סקר", () => sender.poll(st.jid!, "🤖 בדיקה 2/6: הסקר הזה מופיע אצלכם?", ["כן", "לא"]));
+          await run("בוחן", () => sender.quiz(st.jid!, "🤖 בדיקה 3/6: כמה זה 2+2?", ["3", "4", "5"], "4"));
+          await run("שאלה (ניסיוני)", () => sender.question(st.jid!, "🤖 בדיקה 4/6: מה הכי אהבתם השבוע?"));
+          await run("תמונה", async () => sender.image(st.jid!, await renderCard({ text: "בדיקה 5/6\nתמונה מהבוט 🖼️", footer: c.name, seed: "test" }), "🤖 בדיקה 5/6: תמונה"));
+          await run("סרטון", async () => sender.video(st.jid!, await media.video({ kind: "video", text: "", cardText: "בדיקה 6/6\nסרטון מהבוט 🎬" }, c, "test-video"), "🤖 בדיקה 6/6: סרטון"));
           store.event(now(), "info", "test_posts", results.map((r) => `${r.kind}:${r.ok ? "ok" : r.error}`).join(" | "), c.id);
           return { results };
         },
-        sendNow: async (id, prompt) => {
+        sendNow: async (id, prompt, as) => {
           const c = config.channels.find((x) => x.id === id);
           if (!c) return { error: "ערוץ לא קיים" };
           if (!gen) return { error: "חסר מפתח AI" };
           const st = store.channel(c.id);
           if (!st.jid || !canPost(st.role)) return { error: "הבוט לא מנהל בערוץ הזה (או שהוא עוד לא נמצא)" };
-          return writeNow(gen, c, prompt, now());
+          return writeNow(gen, c, prompt, now(), as === "quiz" || as === "question" ? as : "post");
         },
         setShabbat: (id, on) => {
           if (!config.channels.some((c) => c.id === id)) return "ערוץ לא קיים";

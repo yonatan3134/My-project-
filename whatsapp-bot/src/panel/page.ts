@@ -291,8 +291,8 @@ function renderChannels(list) {
         '<div class="row"><select class="kb" style="flex:1"><option value="">ללא</option>' +
         S.knowledgeFiles.map((k) => '<option value="' + esc(k.name) + '"' + (k.name === c.knowledge ? " selected" : "") + ">" + esc(k.title) + "</option>").join("") +
         "</select>" + S.knowledgeFiles.filter((k) => k.pdf).map((k) => '<a class="hint" target="_blank" href="/knowledge/' + esc(k.name) + '.pdf">📄 לפתוח את ' + esc(k.title) + "</a>").join(" ") + "</div>" : "") +
-      (live ? '<h3 style="font-size:15px;margin:14px 0 0">⚡ לשלוח עכשיו</h3><div class="row"><input class="nowp" value="חידה" style="flex:1;min-width:140px" placeholder="מה לשלוח, למשל: חידה / סקר / בדיחה"><button class="sendnow">⚡ שלח עכשיו</button></div><div class="nowres hint"></div>' : "") +
-      (live ? '<div class="row" style="margin-top:12px"><button class="push">📣 לדחוף את הערוץ בכל הערוצים</button><button class="light test">🧪 לשלוח 4 פוסטי בדיקה</button></div><div class="testres hint"></div>' : "") +
+      (live ? '<h3 style="font-size:15px;margin:14px 0 0">⚡ לשלוח עכשיו</h3><div class="row"><select class="nowas" style="width:auto"><option value="post">פוסט</option><option value="quiz">🏆 בוחן (תשובה נכונה אחת)</option><option value="question">❓ שאלה (ניסיוני)</option></select><input class="nowp" value="חידה" style="flex:1;min-width:140px" placeholder="על מה, למשל: חידה / בראולרים / בדיחה"><button class="sendnow">⚡ שלח עכשיו</button></div><div class="nowres hint"></div>' : "") +
+      (live ? '<div class="row" style="margin-top:12px"><button class="push">📣 לדחוף את הערוץ בכל הערוצים</button><button class="light test">🧪 לשלוח 6 פוסטי בדיקה</button></div><div class="testres hint"></div>' : "") +
       "</details></div>";
   }).join("");
   document.querySelectorAll(".ch .del").forEach((b) => b.onclick = () => {
@@ -309,7 +309,7 @@ function renderChannels(list) {
   });
   document.querySelectorAll(".ch .test").forEach((b) => b.onclick = async () => {
     const box = b.closest(".ch"), out = box.querySelector(".testres");
-    if (!confirm("לשלוח עכשיו 4 הודעות בדיקה (טקסט, סקר, תמונה, סרטון) לערוץ הזה? העוקבים יראו אותן.")) return;
+    if (!confirm("לשלוח עכשיו 6 הודעות בדיקה (טקסט, סקר, בוחן, שאלה, תמונה, סרטון) לערוץ הזה? העוקבים יראו אותן.")) return;
     b.disabled = true; out.textContent = "שולח... (עד דקה)";
     try {
       const r = await fetch("/api/test", { method:"POST", headers:{ "Content-Type":"application/json", "X-Panel":"1" }, body: JSON.stringify({ id: box.dataset.id }) });
@@ -332,7 +332,7 @@ function renderChannels(list) {
     const box = b.closest(".ch"), out = box.querySelector(".nowres");
     b.disabled = true; out.textContent = "ה-AI כותב... (עד חצי דקה)";
     try {
-      const r = await fetch("/api/send-now", { method:"POST", headers:{ "Content-Type":"application/json", "X-Panel":"1" }, body: JSON.stringify({ id: box.dataset.id, prompt: box.querySelector(".nowp").value }) });
+      const r = await fetch("/api/send-now", { method:"POST", headers:{ "Content-Type":"application/json", "X-Panel":"1" }, body: JSON.stringify({ id: box.dataset.id, prompt: box.querySelector(".nowp").value, as: box.querySelector(".nowas").value }) });
       const j = await r.json();
       out.innerHTML = j.error ? '<span style="color:var(--bad)">' + esc(j.error) + "</span>" : "✅ יוצא לערוץ תוך דקה: " + esc(j.text);
     } catch (e) { out.textContent = e.message; }

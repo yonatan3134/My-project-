@@ -17,7 +17,7 @@ export function makeConfig(channels: Record<string, unknown>[], settings: Record
 
 export interface Sent {
   jid: string;
-  kind: "text" | "poll" | "image" | "video";
+  kind: "text" | "poll" | "quiz" | "question" | "image" | "video";
   body: string;
   ok: boolean;
 }
@@ -40,6 +40,12 @@ export class ScriptedSender implements Sender {
   }
   async poll(jid: string, question: string, options: string[]): Promise<SendResult> {
     return this.go(jid, "poll", `${question} :: ${options.join(" | ")}`);
+  }
+  async quiz(jid: string, question: string, options: string[], correct: string): Promise<SendResult> {
+    return this.go(jid, "quiz", `${question} :: ${options.join(" | ")} :: ✔ ${correct}`);
+  }
+  async question(jid: string, text: string): Promise<SendResult> {
+    return this.go(jid, "question", text);
   }
   async image(jid: string, _image: CardImage, caption: string): Promise<SendResult> {
     return this.go(jid, "image", caption);

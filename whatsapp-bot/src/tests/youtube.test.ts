@@ -43,7 +43,7 @@ test("a new video becomes a post with its link; old videos and AI-written links 
   const llm: LLM = {
     async write(req) {
       offered = req.sources.map((s) => `${s.source} | ${s.title}`);
-      const d = (text: string, source_index: number): Draft => ({ kind: "text", text, poll_question: "", poll_options: [], card_text: "", visual_query: "", image_prompt: "", followup: "", topic_key: text.slice(0, 20), source_index });
+      const d = (text: string, source_index: number): Draft => ({ kind: "text", text, poll_question: "", poll_options: [], correct_option: "", card_text: "", visual_query: "", image_prompt: "", followup: "", topic_key: text.slice(0, 20), source_index });
       return [d("🎬 סרטון חדש! הבראולר החדש כבר כאן, מי ראה? 🔥", 0), d("עוד סרטון www.example.com", 0)];
     },
     async review(_c, items) {

@@ -79,7 +79,11 @@ export function draftToPayload(d: Draft, mode: "creative" | "fandom" | "news", s
     if (question.length < 3 || question.length > 250) return { reject: "bad poll question" };
     if (options.length < 2 || options.length > 6) return { reject: "poll needs 2-6 options" };
     if (options.some((o) => o.length > 95)) return { reject: "poll option too long" };
-    return { payload: { kind: "poll", text: "", pollQuestion: question, pollOptions: options, ...(followup ? { followup } : {}) } };
+    const correct = d.correct_option.trim();
+    const correctOption = options.find((o) => o === correct);
+    return {
+      payload: { kind: "poll", text: "", pollQuestion: question, pollOptions: options, ...(correctOption ? { correctOption } : {}), ...(followup ? { followup } : {}) },
+    };
   }
   const cardText = d.card_text.trim();
   if (cardText.length < 2 || cardText.length > 220) return { reject: "bad card text" };
@@ -347,6 +351,7 @@ async function writeOne(
   mode: "creative" | "fandom" | "news",
   prompt: string,
   now: number,
+  kind: PostKind = "text",
 ): Promise<{ payload: PostPayload; cand: Candidate } | RefillResult> {
   const result: RefillResult = { queued: 0, rejected: [] };
   channel = withKnowledge(ctx.store, channel);
@@ -358,7 +363,7 @@ async function writeOne(
     drafts = await ctx.llm.write({
       channel,
       mode: writeMode,
-      counts: { text: 1 },
+      counts: { [kind]: 1 },
       usedKeys: store.recentForDedup(channel.id, null, settings.dedup.keysInPrompt).map((r) => r.topic_key).filter(Boolean),
       samples: store.styleSamples(channel.id, 8),
       sources: [],
@@ -410,9 +415,25 @@ async function refillSpecial(ctx: GenContext, channel: ChannelConfig, mode: "cre
  * (for example "חידה") and queues it to go out right away, outside the
  * channel's schedule. Returns the post's text, or why nothing was written.
  */
-export async function writeNow(ctx: GenContext, channel: ChannelConfig, prompt: string, now: number): Promise<{ text: string } | { error: string }> {
+export async function writeNow(
+  ctx: GenContext,
+  channel: ChannelConfig,
+  prompt: string,
+  now: number,
+  as: "post" | "quiz" | "question" = "post",
+): Promise<{ text: string } | { error: string }> {
   const mode = effectiveMode(channel) ?? "creative";
-  const r = await writeOne(ctx, channel, mode, prompt.trim() || "חידה", now);
+  const instruction =
+    as === "quiz"
+      ? `${prompt.trim() || "שאלת טריוויה"}. Write it as a quiz: a poll with 3 or 4 options, exactly one right, copied into correct_option.`
+      : as === "question"
+        ? `${prompt.trim() || "שאלה לעוקבים"}. Write one open question that followers answer in their own words (no options, no answer).`
+        : prompt.trim() || "חידה";
+  const r = await writeOne(ctx, channel, mode, instruction, now, as === "quiz" ? "poll" : "text");
+  if ("payload" in r && as === "quiz" && !r.payload.correctOption) {
+    return { error: "ה-AI כתב סקר בלי תשובה נכונה אחת. אפשר לנסות שוב." };
+  }
+  if ("payload" in r && as === "question") r.payload = { ...r.payload, asQuestion: true, followup: undefined };
   if (!("payload" in r)) {
     return { error: r.llmError ? `שירות ה-AI לא זמין כרגע (${r.llmError.kind})` : `ה-AI כתב פוסט שנפסל (${r.rejected.join(", ") || "לא ידוע"}). אפשר לנסות שוב.` };
   }

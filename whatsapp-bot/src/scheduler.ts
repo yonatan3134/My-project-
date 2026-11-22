@@ -6,6 +6,8 @@ import { DAY, HOUR, MINUTE, dayKey, hash32, hourOfDay } from "./time.js";
 import { canPost } from "./wa/channels.js";
 import type { SendResult, Sender } from "./wa/sender.js";
 
+type Capability = "poll" | "media" | "quiz" | "question";
+
 export const MILESTONES = [100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 250000, 500000, 1000000];
 
 export interface CountdownEvent {
@@ -249,7 +251,7 @@ export class Scheduler {
     return active;
   }
 
-  private capabilityOff(kind: "poll" | "media", now: number): boolean {
+  private capabilityOff(kind: Capability, now: number): boolean {
     return (this.d.store.getNumber(`${kind}_off_until`) ?? 0) > now;
   }
 
@@ -259,7 +261,7 @@ export class Scheduler {
    * instead). When the pause ends a single post probes again: if it is
    * rejected too, the pause doubles, up to a day.
    */
-  private noteCapability(kind: "poll" | "media", ok: boolean, now: number, detail = ""): void {
+  private noteCapability(kind: Capability, ok: boolean, now: number, detail = ""): void {
     const { store } = this.d;
     if (ok) {
       store.set(`${kind}_failures`, "0");
@@ -361,9 +363,22 @@ export class Scheduler {
 
   private async send(p: PostPayload, channel: ChannelConfig, jid: string, seed: string, now: number): Promise<SendResult & { sentAs: string }> {
     const { sender, media } = this.d;
+    if (p.kind === "text" && p.asQuestion && !this.capabilityOff("question", now)) {
+      const res = await sender.question(jid, p.text);
+      if (res.ok || res.uncertain || res.error === "not connected") return { ...res, sentAs: "question" };
+      this.noteCapability("question", false, now, res.error);
+      this.d.store.event(now, "warn", "question_failed", res.error ?? "", channel.id);
+    }
     if (p.kind === "text") return { ...(await sender.text(jid, p.text)), sentAs: "text" };
 
     if (p.kind === "poll") {
+      const options = p.pollOptions ?? [];
+      if (p.correctOption && options.includes(p.correctOption) && !this.capabilityOff("quiz", now)) {
+        const res = await sender.quiz(jid, p.pollQuestion ?? "", options, p.correctOption);
+        if (res.ok || res.uncertain || res.error === "not connected") return { ...res, sentAs: "quiz" };
+        this.noteCapability("quiz", false, now, res.error);
+        this.d.store.event(now, "warn", "quiz_failed", res.error ?? "", channel.id);
+      }
       if (!this.capabilityOff("poll", now)) {
         const res = await sender.poll(jid, p.pollQuestion ?? "", p.pollOptions ?? []);
         if (res.ok || res.uncertain || res.error === "not connected") return { ...res, sentAs: "poll" };
@@ -416,6 +431,7 @@ export class Scheduler {
         store.set(key, row.special ? "0" : String((store.getNumber(key) ?? 0) + 1));
       }
       if (res.sentAs === "poll") this.noteCapability("poll", true, now);
+      if (res.sentAs === "quiz" || res.sentAs === "question") this.noteCapability(res.sentAs, true, now);
       if (res.sentAs === "image" || res.sentAs === "video") this.noteCapability("media", true, now);
       // a riddle's answer follows it, also when the riddle was sent with "send now"
       if (row.payload.followup) {
@@ -423,7 +439,7 @@ export class Scheduler {
         const delay = (Math.min(lo, hi) + this.rand() * Math.abs(hi - lo)) * MINUTE;
         store.enqueue({ channelId: channel.id, payload: { kind: "text", text: row.payload.followup }, notBefore: now + delay, isFollowup: true, manual: row.manual === 1, now });
       }
-      if (res.sentAs === "poll" && !row.is_followup) this.maybeInvade(channel, now);
+      if ((res.sentAs === "poll" || res.sentAs === "quiz") && !row.is_followup) this.maybeInvade(channel, now);
       if (!row.is_followup && this.growth()) this.maybePromote(channel, now);
       return;
     }
