@@ -11,6 +11,10 @@ export interface PostPayload {
   text: string;
   pollQuestion?: string;
   pollOptions?: string[];
+  /** for a quiz: the one right option (must be one of pollOptions) */
+  correctOption?: string;
+  /** send a text post as a channel "question" that followers answer privately */
+  asQuestion?: boolean;
   /** short text drawn on the picture */
   cardText?: string;
   /** English keywords for an optional stock background */

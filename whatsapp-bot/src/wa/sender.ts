@@ -6,7 +6,9 @@ import {
   encodeBase64EncodedStringForUpload,
   encodeNewsletterMessage,
   generateWAMessage,
+  generateWAMessageFromContent,
   isJidNewsletter,
+  proto,
   normalizeMessageContent,
   type BinaryNode,
   type AnyMessageContent,
@@ -37,6 +39,10 @@ export interface SendResult {
 export interface Sender {
   text(jid: string, text: string): Promise<SendResult>;
   poll(jid: string, question: string, options: string[]): Promise<SendResult>;
+  /** a channel quiz: a poll with one correct answer that WhatsApp reveals to each follower after they vote */
+  quiz(jid: string, question: string, options: string[], correct: string): Promise<SendResult>;
+  /** a channel "question" that followers answer privately (experimental: the message format is a guess) */
+  question(jid: string, text: string): Promise<SendResult>;
   image(jid: string, image: CardImage, caption: string): Promise<SendResult>;
   video(jid: string, clip: VideoClip, caption: string): Promise<SendResult>;
 }
@@ -103,13 +109,14 @@ function channelUpload(sock: WASocket, onThumb: (t: ServerThumb) => void): WAMed
 export function channelStanza(jid: string, id: string, message: WAMessage["message"]): BinaryNode | null {
   if (!message) return null;
   const inner = normalizeMessageContent(message);
-  const isPoll = Boolean(inner?.pollCreationMessageV3 || inner?.pollCreationMessage || inner?.pollCreationMessageV2);
+  const isPoll = Boolean(inner?.pollCreationMessageV3 || inner?.pollCreationMessage || inner?.pollCreationMessageV2 || inner?.pollCreationMessageV5);
+  const isQuiz = inner?.pollCreationMessageV5?.pollType === proto.Message.PollType.QUIZ;
   const mediaType = inner?.imageMessage ? "image" : inner?.videoMessage ? (inner.videoMessage.gifPlayback ? "gif" : "video") : null;
   if (!isPoll && !mediaType) return null;
   const msg = { ...message };
   if (isPoll) delete msg.messageContextInfo; // channel polls are public; the per-chat vote secret is not sent
   const content: BinaryNode[] = [];
-  if (isPoll) content.push({ tag: "meta", attrs: { polltype: "creation", contenttype: "text" } });
+  if (isPoll) content.push({ tag: "meta", attrs: { polltype: isQuiz ? "quiz_creation" : "creation", contenttype: "text" } });
   content.push({ tag: "plaintext", attrs: mediaType ? { mediatype: mediaType } : {}, content: encodeNewsletterMessage(msg as Parameters<typeof encodeNewsletterMessage>[0]) });
   return { tag: "message", attrs: { to: jid, id, type: isPoll ? "poll" : "media" }, content };
 }
@@ -185,6 +192,29 @@ export class WaSender implements Sender {
 
   poll(jid: string, question: string, options: string[]): Promise<SendResult> {
     return this.simple(jid, { poll: { name: question, values: options, selectableCount: 1 } });
+  }
+
+  private async raw(jid: string, message: proto.IMessage): Promise<SendResult> {
+    const sock = this.client.sock;
+    if (!this.client.isOpen || !sock?.user) return { ok: false, error: "not connected" };
+    const full = generateWAMessageFromContent(jid, message, { userJid: sock.user.id });
+    return this.relay(sock, jid, full);
+  }
+
+  quiz(jid: string, question: string, options: string[], correct: string): Promise<SendResult> {
+    return this.raw(jid, {
+      pollCreationMessageV5: {
+        name: question,
+        options: options.map((optionName) => ({ optionName })),
+        selectableOptionsCount: 1,
+        pollType: proto.Message.PollType.QUIZ,
+        correctAnswer: { optionName: correct },
+      },
+    });
+  }
+
+  question(jid: string, text: string): Promise<SendResult> {
+    return this.raw(jid, { questionMessage: { message: { extendedTextMessage: { text } } } });
   }
 
   private strategies(): UploadStrategy[] {
@@ -279,6 +309,14 @@ export class DryRunSender implements Sender {
 
   async poll(jid: string, question: string, options: string[]): Promise<SendResult> {
     return this.record(jid, "poll", `${question} :: ${options.join(" | ")}`);
+  }
+
+  async quiz(jid: string, question: string, options: string[], correct: string): Promise<SendResult> {
+    return this.record(jid, "quiz", `${question} :: ${options.join(" | ")} :: ✔ ${correct}`);
+  }
+
+  async question(jid: string, text: string): Promise<SendResult> {
+    return this.record(jid, "question", text);
   }
 
   async image(jid: string, image: CardImage, caption: string): Promise<SendResult> {

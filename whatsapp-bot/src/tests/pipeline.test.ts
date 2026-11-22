@@ -439,3 +439,42 @@ test("countdown events post once a day in the last week and on the day", () => {
   assert.ok(texts.some((t) => t.includes("עוד 3 ימים להעונה החדשה")));
   assert.ok(texts.some((t) => t.includes("היום: העונה החדשה")));
 });
+
+test("quiz posts: sent as a quiz; when quizzes are rejected, as a normal poll", async () => {
+  const config = makeConfig([{ id: "z", mode: "creative" }]);
+  const run = async (fail: boolean) => {
+    const store = new Store(":memory:");
+    store.updateChannel("z", { jid: "sim-z@newsletter", role: "ADMIN", resolved_at: START });
+    store.enqueue({ channelId: "z", payload: { kind: "poll", text: "", pollQuestion: "מי הקקטוס?", pollOptions: ["ספייק", "שלי"], correctOption: "ספייק" }, notBefore: START, isFollowup: true, manual: true, now: START });
+    const sender = new ScriptedSender();
+    if (fail) sender.fail.quiz = { ok: false, error: "WhatsApp rejected the message (code 479)" };
+    let clock = START;
+    const scheduler = new Scheduler({ store, config, sender, media: stubMedia, now: () => clock, random: seededRandom(7), isConnected: () => true });
+    for (; clock < START + 2 * MINUTE; clock += 15_000) await scheduler.tick();
+    return sender.log.map((s) => `${s.kind}:${s.ok}`);
+  };
+  assert.deepEqual(await run(false), ["quiz:true"]);
+  assert.deepEqual(await run(true), ["quiz:false", "poll:true"]);
+});
+
+test("a question post falls back to text when WhatsApp does not take it", async () => {
+  const config = makeConfig([{ id: "q", mode: "creative" }]);
+  const store = new Store(":memory:");
+  store.updateChannel("q", { jid: "sim-q@newsletter", role: "ADMIN", resolved_at: START });
+  store.enqueue({ channelId: "q", payload: { kind: "text", text: "מה הכי אהבתם השבוע?", asQuestion: true }, notBefore: START, isFollowup: true, manual: true, now: START });
+  const sender = new ScriptedSender();
+  sender.fail.question = { ok: false, error: "WhatsApp rejected the message (code 479)" };
+  let clock = START;
+  const scheduler = new Scheduler({ store, config, sender, media: stubMedia, now: () => clock, random: seededRandom(8), isConnected: () => true });
+  for (; clock < START + 2 * MINUTE; clock += 15_000) await scheduler.tick();
+  assert.deepEqual(sender.log.map((s) => `${s.kind}:${s.ok}`), ["question:false", "text:true"]);
+});
+
+test("the AI's trivia polls keep the right answer only when it is one of the options", async () => {
+  const { draftToPayload } = await import("../content/generator.js");
+  const base = { kind: "poll" as const, text: "", poll_question: "מי הקקטוס?", poll_options: ["ספייק", "שלי", "קולט"], card_text: "", visual_query: "", image_prompt: "", followup: "", topic_key: "", source_index: -1 };
+  const ok = draftToPayload({ ...base, correct_option: "ספייק" }, "creative", 0);
+  assert.ok("payload" in ok && ok.payload.correctOption === "ספייק");
+  const off = draftToPayload({ ...base, correct_option: "ליאון" }, "creative", 0);
+  assert.ok("payload" in off && off.payload.correctOption === undefined);
+});

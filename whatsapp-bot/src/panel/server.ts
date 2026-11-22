@@ -38,7 +38,7 @@ export interface PanelApi {
   approve(id: number): string | null;
   pending(channelId: string): unknown;
   test(id: string): Promise<{ error?: string; results?: unknown }>;
-  sendNow(id: string, prompt: string): Promise<{ text: string } | { error: string }>;
+  sendNow(id: string, prompt: string, as: string): Promise<{ text: string } | { error: string }>;
   flush(id: string): string | null;
   broadcast(text: string): string | null;
   setShabbat(id: string, on: boolean): string | null;
@@ -162,7 +162,7 @@ export function startPanel(api: PanelApi, port: number): http.Server {
             return send(res, r.error ? 400 : 200, r);
           }
           case "/api/send-now": {
-            const r = await api.sendNow(String(body.id ?? ""), String(body.prompt ?? "").slice(0, 300));
+            const r = await api.sendNow(String(body.id ?? ""), String(body.prompt ?? "").slice(0, 300), String(body.as ?? "post"));
             return send(res, "error" in r ? 400 : 200, r);
           }
           case "/api/shabbat":

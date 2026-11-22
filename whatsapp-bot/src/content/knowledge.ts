@@ -51,7 +51,7 @@ export function withKnowledge(store: Store, channel: ChannelConfig): ChannelConf
   if (!text) return channel;
   const brief = [
     "A KNOWLEDGE FILE is switched on for this channel. Most posts are riddles, trivia questions and \"who am I?\" puzzles built from it.",
-    "Put the answer in \"followup\" (for example \"התשובה: ...\"). A poll may be a trivia question whose options include the right answer, with the answer in \"followup\".",
+    "Put the answer of a text riddle in \"followup\" (for example \"התשובה: ...\"). A poll is a trivia quiz: one option is right, copied exactly into \"correct_option\", and \"followup\" stays empty.",
     "Every fact in a post must appear in the KNOWLEDGE FILE. Do not add facts from memory, even about the same topic.",
     "",
     "KNOWLEDGE FILE:",

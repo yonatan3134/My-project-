@@ -93,3 +93,18 @@ test("channel polls and media are sent with the parts WhatsApp requires for chan
   const text = await build({ text: "רק טקסט" });
   assert.equal(channelStanza(JID, "id3", text.message), null, "text keeps the library's own path, which works");
 });
+
+import { generateWAMessageFromContent } from "baileys";
+
+test("a quiz goes to the channel as a poll with one correct answer and the quiz marker", async () => {
+  const { proto } = await import("baileys");
+  const msg = generateWAMessageFromContent(JID, {
+    pollCreationMessageV5: { name: "כמה זה 2+2?", options: [{ optionName: "3" }, { optionName: "4" }], selectableOptionsCount: 1, pollType: proto.Message.PollType.QUIZ, correctAnswer: { optionName: "4" } },
+  }, { userJid: "972500000000:1@s.whatsapp.net" });
+  const node = channelStanza(JID, "q1", msg.message)!;
+  assert.equal(node.attrs.type, "poll");
+  assert.equal(getBinaryNodeChild(node, "meta")?.attrs.polltype, "quiz_creation");
+  const decoded = proto.Message.decode(getBinaryNodeChild(node, "plaintext")!.content as Uint8Array);
+  assert.equal(decoded.pollCreationMessageV5?.correctAnswer?.optionName, "4");
+  assert.equal(decoded.pollCreationMessageV5?.pollType, proto.Message.PollType.QUIZ);
+});
