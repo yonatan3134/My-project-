@@ -42,6 +42,8 @@ export interface PanelApi {
   flush(id: string): string | null;
   broadcast(text: string): string | null;
   setShabbat(id: string, on: boolean): string | null;
+  learn(id: string): Promise<{ error?: string; learned?: string[]; posts?: unknown }>;
+  capture(): unknown;
   setMilestones(on: boolean): void;
   recheck(): string | null;
   schedule(channel: string, at: number, text: string): string | null;
@@ -131,6 +133,7 @@ export function startPanel(api: PanelApi, port: number): http.Server {
         res.writeHead(200, { "Content-Type": "application/pdf", "Cache-Control": "no-store" });
         return res.end(fs.readFileSync(file));
       }
+      if (req.method === "GET" && url.pathname === "/api/capture") return send(res, 200, api.capture());
       if (req.method === "GET" && url.pathname === "/api/pending") return send(res, 200, api.pending(url.searchParams.get("channel") ?? ""));
       if (req.method === "GET" && url.pathname === "/api/queue") return send(res, 200, api.queue(url.searchParams.get("channel") ?? ""));
 
@@ -164,6 +167,10 @@ export function startPanel(api: PanelApi, port: number): http.Server {
           case "/api/send-now": {
             const r = await api.sendNow(String(body.id ?? ""), String(body.prompt ?? "").slice(0, 300), String(body.as ?? "post"));
             return send(res, "error" in r ? 400 : 200, r);
+          }
+          case "/api/learn": {
+            const r = await api.learn(String(body.id ?? ""));
+            return send(res, r.error ? 400 : 200, r);
           }
           case "/api/shabbat":
             error = api.setShabbat(String(body.id ?? ""), body.on === true);
