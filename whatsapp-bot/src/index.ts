@@ -223,7 +223,7 @@ async function main(): Promise<void> {
   async function syncEngagement(): Promise<void> {
     const sock = client?.sock;
     if (!client?.isOpen || !sock) return;
-    if (now() - (store.getNumber("engagement_at") ?? 0) < 3 * HOUR) return;
+    if (now() - (store.getNumber("engagement_at") ?? 0) < HOUR) return;
     store.set("engagement_at", String(now()));
     let matched = 0;
     for (const c of postingChannels(config.channels)) {
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     await syncEngagement();
     store.prune(now(), settings.dedup.lookback * 2);
     store.expireStaleNews(now(), 36 * HOUR);
-    await syncChannels(24 * HOUR);
+    await syncChannels(HOUR); // follower counts and admin status, fresh every hour
     const files = await fs.readdir(TMP_DIR).catch(() => [] as string[]);
     for (const f of files) {
       const p = path.join(TMP_DIR, f);
@@ -272,7 +272,7 @@ async function main(): Promise<void> {
         scheduler.countdowns(loadEvents(), now());
         if (now() - lastProblemSync > 5 * MINUTE) {
           lastProblemSync = now();
-          await syncChannels(24 * HOUR);
+          await syncChannels(HOUR); // follower counts and admin status, fresh every hour
         }
         if (client && !client.isOpen && client.status !== "logged_out" && now() - Math.max(client.lastOpenAt, startedAt) > 10 * MINUTE) {
           await control.alert("disconnected", "הבוט לא מצליח להתחבר לוואטסאפ כבר יותר מ-10 דקות. הוא ממשיך לנסות.", HOUR);
