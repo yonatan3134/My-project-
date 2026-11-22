@@ -350,7 +350,7 @@ function renderChannels(list) {
 const KIND_NAMES = { text:"טקסט", poll:"סקר", image:"תמונה", video:"סרטון" };
 function perfHtml(perf) {
   const rows = Object.entries(perf || {}).filter(([, p]) => p && p.n > 0).sort((a, b) => b[1].avg - a[1].avg);
-  if (!rows.length) return '<p class="hint" style="margin:4px 0">עוד אין נתונים. הבוט בודק כל 3 שעות כמה תגובות וצפיות קיבל כל פוסט.</p>';
+  if (!rows.length) return '<p class="hint" style="margin:4px 0">עוד אין נתונים. הבוט בודק כל שעה כמה תגובות וצפיות קיבל כל פוסט.</p>';
   return '<p class="hint" style="margin:4px 0">ממוצע תגובות לפוסט ב-30 הימים האחרונים. הבוט כותב יותר ממה שמצליח.</p>' +
     rows.map(([k, p]) => '<div class="hint">' + (KIND_NAMES[k] || k) + ": ❤️ " + p.avg.toFixed(1) + " · 👁 " + Math.round(p.views) + " (" + p.n + " פוסטים)</div>").join("");
 }
@@ -501,7 +501,8 @@ async function load() {
   } catch { $("sub").textContent = "הבוט לא עונה כרגע (אולי באמצע הפעלה מחדש)"; }
 }
 load();
-setInterval(() => { if (!editing || (S && (S.linking || S.pairingCode))) load(); }, 4000);
+// the numbers refresh every few seconds; while you type, the fields you are editing are left alone
+setInterval(load, 4000);
 setInterval(loadQueue, 30000);
 setInterval(() => { if (S && S.pendingTotal) loadPending(); }, 30000);
 </script>
