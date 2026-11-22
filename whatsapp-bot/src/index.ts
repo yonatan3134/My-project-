@@ -17,6 +17,7 @@ import { startPanel } from "./panel/server.js";
 import { Scheduler, postingChannels, type CountdownEvent } from "./scheduler.js";
 import { HOUR, MINUTE, dayKey, sleep } from "./time.js";
 import { canPost, fetchChannelPosts, recentPostTexts, resolveChannels } from "./wa/channels.js";
+import { learnFromChannel, watchChannelFrames } from "./wa/capture.js";
 import { recordChannelEngagement } from "./engagement.js";
 import { knowledgeFiles } from "./content/knowledge.js";
 import { renderCard } from "./media/cards.js";
@@ -294,6 +295,7 @@ async function main(): Promise<void> {
   // ---- settings website ------------------------------------------------------
 
   let linker: WaClient | null = null;
+  let stopWatching: (() => void) | null = null;
   const port = Number(process.env.PANEL_PORT ?? 80);
   if (process.env.PANEL !== "0") {
     startPanel(
@@ -535,6 +537,22 @@ async function main(): Promise<void> {
           if (!st.jid || !canPost(st.role)) return { error: "הבוט לא מנהל בערוץ הזה (או שהוא עוד לא נמצא)" };
           return writeNow(gen, c, prompt, now(), as === "quiz" || as === "question" ? as : "post");
         },
+        learn: async (id) => {
+          const c = config.channels.find((x) => x.id === id);
+          const sock = client?.sock;
+          if (!c || !client?.isOpen || !sock) return { error: "הבוט לא מחובר לוואטסאפ" };
+          const st = store.channel(c.id);
+          if (!st.jid) return { error: "הערוץ עוד לא נמצא בוואטסאפ" };
+          stopWatching?.();
+          stopWatching = watchChannelFrames(sock, store, 10);
+          try {
+            const r = await learnFromChannel(sock, store, st.jid);
+            return { learned: r.learned, posts: r.posts.map((p) => ({ kind: p.kind, type: p.attrs.type ?? "", text: p.text.slice(0, 80) })) };
+          } catch (err) {
+            return { error: `לא הצלחתי לקרוא את הערוץ: ${(err as Error).message}` };
+          }
+        },
+        capture: () => ({ posts: JSON.parse(store.get("capture:last") ?? "[]"), frames: JSON.parse(store.get("capture:frames") ?? "[]"), templates: ["question"].filter((k) => store.get(`template:${k}`)) }),
         setShabbat: (id, on) => {
           if (!config.channels.some((c) => c.id === id)) return "ערוץ לא קיים";
           store.set(`shabbat:${id}`, on ? "1" : "0");

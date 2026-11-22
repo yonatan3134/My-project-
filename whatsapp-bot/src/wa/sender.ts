@@ -7,6 +7,7 @@ import {
   encodeNewsletterMessage,
   generateWAMessage,
   generateWAMessageFromContent,
+  generateMessageIDV2,
   isJidNewsletter,
   proto,
   normalizeMessageContent,
@@ -24,6 +25,7 @@ import { DRY_RUN_DIR } from "../paths.js";
 import { sleep } from "../time.js";
 import type { WaClient } from "./client.js";
 import { youtubePreview } from "../content/youtube.js";
+import { fromTemplate } from "./capture.js";
 
 export interface SendResult {
   ok: boolean;
@@ -213,7 +215,23 @@ export class WaSender implements Sender {
     });
   }
 
-  question(jid: string, text: string): Promise<SendResult> {
+  async question(jid: string, text: string): Promise<SendResult> {
+    // a question the owner posted from the phone and the bot learned is copied exactly
+    const sock = this.client.sock;
+    if (sock?.user && this.client.isOpen) {
+      const id = generateMessageIDV2(sock.user.id);
+      const node = fromTemplate(this.store, "question", jid, id, text);
+      if (node) {
+        try {
+          await sock.sendNode(node);
+        } catch (err) {
+          return { ok: false, uncertain: true, error: `connection broke while sending: ${(err as Error).message}` };
+        }
+        const rejected = await this.rejection(id);
+        return rejected ? { ok: false, error: `WhatsApp rejected the learned question (code ${rejected})` } : { ok: true, id };
+      }
+    }
+    // otherwise a guess at the format, which may be rejected
     return this.raw(jid, { questionMessage: { message: { extendedTextMessage: { text } } } });
   }
 

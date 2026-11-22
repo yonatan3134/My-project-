@@ -292,6 +292,7 @@ function renderChannels(list) {
         S.knowledgeFiles.map((k) => '<option value="' + esc(k.name) + '"' + (k.name === c.knowledge ? " selected" : "") + ">" + esc(k.title) + "</option>").join("") +
         "</select>" + S.knowledgeFiles.filter((k) => k.pdf).map((k) => '<a class="hint" target="_blank" href="/knowledge/' + esc(k.name) + '.pdf">📄 לפתוח את ' + esc(k.title) + "</a>").join(" ") + "</div>" : "") +
       (live ? '<h3 style="font-size:15px;margin:14px 0 0">⚡ לשלוח עכשיו</h3><div class="row"><select class="nowas" style="width:auto"><option value="post">פוסט</option><option value="quiz">🏆 בוחן (תשובה נכונה אחת)</option><option value="question">❓ שאלה (ניסיוני)</option></select><input class="nowp" value="חידה" style="flex:1;min-width:140px" placeholder="על מה, למשל: חידה / בראולרים / בדיחה"><button class="sendnow">⚡ שלח עכשיו</button></div><div class="nowres hint"></div>' : "") +
+      (live ? '<h3 style="font-size:15px;margin:14px 0 0">🔍 ללמוד מהטלפון</h3><p class="hint" style="margin:4px 0">לסוגי פוסטים שהבוט עוד לא יודע לשלוח (שאלה, סטטוס): מפרסמים אחד כזה מהטלפון בערוץ הזה ולוחצים. הבוט קורא איך האפליקציה שלחה אותו ומעתיק את הצורה. במשך 10 דקות אחרי הלחיצה הוא גם רושם כל מה שוואטסאפ שולחת על ערוצים.</p><div class="row"><button class="light learn">🔍 ללמוד מהפוסטים האחרונים בערוץ</button></div><div class="learnres hint"></div>' : "") +
       (live ? '<div class="row" style="margin-top:12px"><button class="push">📣 לדחוף את הערוץ בכל הערוצים</button><button class="light test">🧪 לשלוח 6 פוסטי בדיקה</button></div><div class="testres hint"></div>' : "") +
       "</details></div>";
   }).join("");
@@ -335,6 +336,22 @@ function renderChannels(list) {
       const r = await fetch("/api/send-now", { method:"POST", headers:{ "Content-Type":"application/json", "X-Panel":"1" }, body: JSON.stringify({ id: box.dataset.id, prompt: box.querySelector(".nowp").value, as: box.querySelector(".nowas").value }) });
       const j = await r.json();
       out.innerHTML = j.error ? '<span style="color:var(--bad)">' + esc(j.error) + "</span>" : "✅ יוצא לערוץ תוך דקה: " + esc(j.text);
+    } catch (e) { out.textContent = e.message; }
+    b.disabled = false;
+  });
+  document.querySelectorAll(".ch .learn").forEach((b) => b.onclick = async () => {
+    const box = b.closest(".ch"), out = box.querySelector(".learnres");
+    b.disabled = true; out.textContent = "קורא מהערוץ...";
+    try {
+      const r = await fetch("/api/learn", { method:"POST", headers:{ "Content-Type":"application/json", "X-Panel":"1" }, body: JSON.stringify({ id: box.dataset.id }) });
+      const j = await r.json();
+      if (j.error) out.innerHTML = '<span style="color:var(--bad)">' + esc(j.error) + "</span>";
+      else {
+        const cap = await (await fetch("/api/capture", { cache:"no-store" })).json();
+        out.innerHTML = (j.learned.length ? "✅ נלמד: " + esc(j.learned.join(", ")) + (j.learned.includes("question") ? ". מעכשיו הבוט שולח שאלות בדיוק בצורה הזו." : "") : "לא נמצא סוג פוסט חדש בפוסטים האחרונים.") +
+          "<br>הפוסטים האחרונים: " + j.posts.map((p) => esc(p.kind) + (p.type ? " (" + esc(p.type) + ")" : "")).join(" · ") +
+          '<details><summary>פרטים מלאים (לצילום מסך)</summary><pre class="ltr" style="white-space:pre-wrap;font-size:11px;max-height:300px;overflow:auto">' + esc(JSON.stringify(cap, null, 1)) + "</pre></details>";
+      }
     } catch (e) { out.textContent = e.message; }
     b.disabled = false;
   });
