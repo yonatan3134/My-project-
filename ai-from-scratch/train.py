@@ -14,8 +14,8 @@ import os
 import random
 import time
 
-from engine import vsum
-from model import GPT, sample, softmax
+from engine import cross_entropy, vsum
+from model import GPT, sample
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -61,7 +61,7 @@ def main():
 
         # קדימה: מנחשים, ומודדים כמה ההסתברות לאות הנכונה נמוכה
         logits = model.forward(inputs)
-        losses = [-softmax(lg)[t].log() for lg, t in zip(logits, targets)]
+        losses = [cross_entropy(lg, t) for lg, t in zip(logits, targets)]
         loss = vsum(losses) / len(losses)
 
         # אחורה: מי אשם בטעות?

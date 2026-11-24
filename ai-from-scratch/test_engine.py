@@ -7,7 +7,7 @@
 
 import random
 
-from engine import Value, dot, vsum
+from engine import Value, cross_entropy, dot, matvec, vsum
 from model import GPT, softmax
 
 
@@ -35,7 +35,15 @@ def test_basic_ops():
 
 def test_fused_ops():
     xs = [Value(random.uniform(-1, 1)) for _ in range(6)]
-    numeric_check(lambda v: dot(v[:3], v[3:]) * vsum(v) + dot(v, v), xs)
+    numeric_check(lambda v: dot(v[:3], v[3:]) * vsum(v) + dot(v, v)
+                  + vsum(matvec([v[:3], v[3:]], v[1:4])), xs)
+
+
+def test_cross_entropy():
+    xs = [Value(random.uniform(-2, 2)) for _ in range(5)]
+    numeric_check(lambda v: cross_entropy(v, 2) * 3, xs)
+    # שווה לגרסה ה"ארוכה"
+    assert abs(cross_entropy(xs, 1).data - (-softmax(xs)[1].log()).data) < 1e-9
 
 
 def test_whole_model():

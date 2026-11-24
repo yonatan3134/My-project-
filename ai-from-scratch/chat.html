@@ -1,0 +1,424 @@
+<title>ניצוץ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Secular+One&family=Heebo:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen chat. Header with the model's vital signs, a scrolling transcript, composer pinned below.
+   Each bot reply can unfold the word-by-word choices the model made. */
+:root {
+  --bg: #F2F3F6;
+  --surface: #FFFFFF;
+  --ink: #15171C;
+  --muted: #5A6070;
+  --line: #DCDFE6;
+  --spark: #C2610C;
+  --spark-bright: #F59E0B;
+  --spark-soft: #FDF1DC;
+  --user: #1E2945;
+  --user-ink: #F4F6FB;
+  --bar: #E7E9EF;
+  --font-display: "Secular One", "Heebo", system-ui, sans-serif;
+  --font-body: "Heebo", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1015; --surface: #171A21; --ink: #E7E9EF; --muted: #969DAD; --line: #292E39;
+    --spark: #F5A524; --spark-bright: #FBBF24; --spark-soft: #33260F; --user: #2A3757; --user-ink: #F1F4FA;
+    --bar: #232733; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1015; --surface: #171A21; --ink: #E7E9EF; --muted: #969DAD; --line: #292E39;
+  --spark: #F5A524; --spark-bright: #FBBF24; --spark-soft: #33260F; --user: #2A3757; --user-ink: #F1F4FA;
+  --bar: #232733; color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.55;
+  direction: rtl;
+}
+.app {
+  height: 100%; max-width: 720px; margin: 0 auto;
+  display: grid; grid-template-rows: auto 1fr auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ---- header ---- */
+header { padding-block: 18px 12px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); }
+.mark { width: 40px; height: 40px; flex: none; }
+.mark circle { fill: var(--spark-bright); }
+.mark path { stroke: var(--spark); }
+.who { min-width: 0; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: 1.6rem; line-height: 1.1; margin: 0; }
+.vitals { margin: 2px 0 0; color: var(--muted); font-size: .85rem; }
+.vitals b { font-family: var(--font-mono); font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ---- transcript ---- */
+#log { overflow-y: auto; padding-block: 18px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.msg { max-width: 85%; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.msg.user { align-self: flex-start; }
+.msg.bot { align-self: flex-end; align-items: flex-end; }
+.bubble { padding: 10px 14px; border-radius: 16px; overflow-wrap: anywhere; }
+.user .bubble { background: var(--user); color: var(--user-ink); border-start-start-radius: 4px; }
+.bot .bubble { background: var(--surface); border: 1px solid var(--line); border-start-end-radius: 4px; }
+.unk { text-decoration: underline dashed; text-underline-offset: 4px; opacity: .8; cursor: help; }
+.note { font-size: .78rem; color: var(--muted); }
+.status { align-self: center; color: var(--muted); font-size: .9rem; text-align: center; max-width: 34ch; }
+.status.error { color: var(--spark); }
+
+/* ---- "how I chose" ---- */
+details.why { font-size: .82rem; color: var(--muted); max-width: 100%; }
+details.why summary { cursor: pointer; list-style: none; user-select: none; }
+details.why summary::-webkit-details-marker { display: none; }
+details.why summary::before { content: "◂ "; color: var(--spark); }
+details.why[open] summary::before { content: "▾ "; }
+details.why summary:focus-visible { outline: 2px solid var(--spark); outline-offset: 2px; border-radius: 4px; }
+.steps { margin-top: 8px; display: grid; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.step { display: grid; grid-template-columns: minmax(4.5rem, auto) 1fr; gap: 10px; align-items: center; }
+.step .chosen { font-weight: 700; color: var(--ink); text-align: left; white-space: nowrap; }
+.cands { display: flex; gap: 6px; flex-wrap: wrap; }
+.cand { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px 1px 6px; border-radius: 999px; background: var(--bar); white-space: nowrap; }
+.cand.picked { background: var(--spark-soft); color: var(--ink); }
+.cand i { font-style: normal; font-family: var(--font-mono); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.meter { width: 28px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--spark); }
+
+/* ---- composer ---- */
+footer { padding-block: 10px 14px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; font: inherit; font-size: .88rem; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer;
+}
+.chip:hover { border-color: var(--spark); }
+form { display: flex; gap: 8px; }
+#q {
+  flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
+}
+#q:focus { outline: 2px solid var(--spark); outline-offset: 0; border-color: transparent; }
+#send {
+  font: inherit; font-weight: 700; border: 0; border-radius: 12px; padding: 0 18px; cursor: pointer;
+  background: var(--spark); color: var(--surface);
+}
+#send:disabled { opacity: .5; cursor: default; }
+button:focus-visible, .chip:focus-visible { outline: 2px solid var(--spark); outline-offset: 2px; }
+.temp { display: flex; align-items: center; gap: 10px; font-size: .82rem; color: var(--muted); }
+.temp input { flex: 1; max-width: 180px; accent-color: var(--spark); }
+.temp output { font-family: var(--font-mono); color: var(--ink); min-width: 2.5em; font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .msg { animation: rise .18s ease-out; }
+  @keyframes rise { from { transform: translateY(6px); opacity: .4; } to { transform: none; opacity: 1; } }
+}
+</style>
+
+<div class="app" dir="rtl">
+  <header>
+    <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M20 3v8M20 29v8M3 20h8M29 20h8M8 8l5 5M27 27l5 5M32 8l-5 5M13 27l-5 5" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+      <circle cx="20" cy="20" r="5.5"/>
+    </svg>
+    <div class="who">
+      <h1>ניצוץ</h1>
+      <p class="vitals" id="vitals">בינה מלאכותית שנבנתה מאפס, בלי שום ספרייה</p>
+    </div>
+  </header>
+
+  <main id="log" aria-live="polite">
+    <p class="status" id="status">טוען את המוח של ניצוץ…</p>
+  </main>
+
+  <footer>
+    <div class="chips" id="chips">
+      <button class="chip" type="button">מי אתה?</button>
+      <button class="chip" type="button">איך אתה לומד?</button>
+      <button class="chip" type="button">ספר לי בדיחה</button>
+      <button class="chip" type="button">מה זה Attention?</button>
+      <button class="chip" type="button">ספר לי משהו מעניין</button>
+      <button class="chip" type="button">מה זה רשת נוירונים?</button>
+    </div>
+    <form id="form" autocomplete="off">
+      <label for="q" hidden>הודעה לניצוץ</label>
+      <input id="q" placeholder="כתבו לניצוץ…" enterkeyhint="send">
+      <button id="send" type="submit" disabled>שלח</button>
+    </form>
+    <div class="temp">
+      <label for="temp">יצירתיות</label>
+      <input id="temp" type="range" min="0.1" max="1.5" step="0.1" value="0.4">
+      <output id="tempOut" for="temp">0.4</output>
+    </div>
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   ניצוץ בדפדפן: אותו מודל בדיוק כמו ב-Python, כתוב מאפס ב-JavaScript.
+   הדף רק "מריץ קדימה" (לא לומד), אז אין צורך במנוע הנגזרות כאן.
+   ============================================================ */
+
+// ---------- טוקנייזר (תואם ל-tokenizer.py) ----------
+const SPECIAL = ["<end>", "<unk>", "<user>", "<bot>"];
+const END = 0, UNK = 1, USER = 2, BOT = 3;
+const NIQQUD = /[֑-ׇ]/g;
+const TOKEN = /[\p{L}\p{N}_]+|[^\p{L}\p{N}_\s]/gu;
+const PREFIXES = "והבלמשכ";
+const NO_SPACE_BEFORE = new Set([".", ",", "!", "?", ":", ";", ")"]);
+
+function split(text) {
+  return text.replace(NIQQUD, "").toLowerCase().match(TOKEN) || [];
+}
+
+function makeTokenizer(vocab) {
+  const stoi = new Map(vocab.map((w, i) => [w, i]));
+  function lookup(word) {
+    if (stoi.has(word)) return stoi.get(word);
+    let w = word;
+    for (let k = 0; k < 2; k++) {
+      if (w.length > 2 && PREFIXES.includes(w[0])) {
+        w = w.slice(1);
+        if (stoi.has(w)) return stoi.get(w);
+      }
+    }
+    return UNK;
+  }
+  return {
+    vocab,
+    pieces: text => split(text).map(w => ({ word: w, id: lookup(w) })),
+    decodeWord: id => vocab[id],
+  };
+}
+
+function joinWords(words) {
+  let out = "";
+  for (const w of words) out += (!out || NO_SPACE_BEFORE.has(w)) ? w : " " + w;
+  return out;
+}
+
+// ---------- המודל (תואם ל-model.py) ----------
+function rmsnorm(x) {
+  let ms = 0;
+  for (const v of x) ms += v * v;
+  const s = Math.pow(ms / x.length + 1e-5, -0.5);
+  return x.map(v => v * s);
+}
+
+function matvec(W, x) {
+  const out = new Array(W.length);
+  for (let r = 0; r < W.length; r++) {
+    const row = W[r];
+    let s = 0;
+    for (let i = 0; i < row.length; i++) s += row[i] * x[i];
+    out[r] = s;
+  }
+  return out;
+}
+
+function softmax(xs) {
+  const m = Math.max(...xs);
+  const e = xs.map(v => Math.exp(v - m));
+  const t = e.reduce((a, b) => a + b, 0);
+  return e.map(v => v / t);
+}
+
+function makeModel({ config, weights: W }) {
+  const { n_embd, n_head, n_layer, block_size } = config;
+  const D = n_embd / n_head;
+  const newCache = () => ({ keys: Array.from({ length: n_layer }, () => []), vals: Array.from({ length: n_layer }, () => []) });
+
+  function step(tok, cache) {
+    const pos = cache.keys[0].length;
+    let x = rmsnorm(W.wte[tok].map((t, i) => t + W.wpe[pos][i]));
+    for (let l = 0; l < n_layer; l++) {
+      let h = rmsnorm(x);
+      const q = matvec(W[`l${l}.wq`], h);
+      cache.keys[l].push(matvec(W[`l${l}.wk`], h));
+      cache.vals[l].push(matvec(W[`l${l}.wv`], h));
+      const att = [];
+      for (let hd = 0; hd < n_head; hd++) {
+        const a = hd * D, b = a + D;
+        const scores = cache.keys[l].map(k => {
+          let s = 0;
+          for (let j = a; j < b; j++) s += q[j] * k[j];
+          return s / Math.sqrt(D);
+        });
+        const w = softmax(scores);
+        for (let j = a; j < b; j++) {
+          let s = 0;
+          for (let t = 0; t < w.length; t++) s += w[t] * cache.vals[l][t][j];
+          att.push(s);
+        }
+      }
+      const o = matvec(W[`l${l}.wo`], att);
+      x = x.map((v, i) => v + o[i]);
+      h = rmsnorm(x);
+      const f = matvec(W[`l${l}.fc1`], h).map(v => Math.max(0, v));
+      const f2 = matvec(W[`l${l}.fc2`], f);
+      x = x.map((v, i) => v + f2[i]);
+    }
+    return matvec(W.head, rmsnorm(x));
+  }
+
+  const params = Object.values(W).reduce((n, m) => n + m.length * m[0].length, 0);
+  return { step, newCache, block_size, params };
+}
+
+// בחירת המילה הבאה: טמפרטורה + top-k, כמו pick() ב-Python
+function pick(logits, temperature, topK = 5) {
+  const scores = logits.map(v => v / temperature);
+  const idx = scores.map((_, i) => i).sort((a, b) => scores[b] - scores[a]).slice(0, topK);
+  const m = scores[idx[0]];
+  const w = idx.map(i => Math.exp(scores[i] - m));
+  const total = w.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  let chosen = idx[idx.length - 1];
+  for (let k = 0; k < idx.length; k++) { r -= w[k]; if (r <= 0) { chosen = idx[k]; break; } }
+  const probs = softmax(scores);
+  const top = idx.slice(0, 3).map(i => ({ id: i, p: probs[i] }));
+  if (!top.some(c => c.id === chosen)) top[2] = { id: chosen, p: probs[chosen] };
+  return { chosen, top };
+}
+
+function reply(model, tok, ids, temperature) {
+  const prompt = [USER, ...ids].slice(0, model.block_size - 8).concat([BOT]);
+  const cache = model.newCache();
+  for (const t of prompt.slice(0, -1)) model.step(t, cache);
+  const out = [];
+  let t = prompt[prompt.length - 1];
+  while (prompt.length + out.length < model.block_size) {
+    const { chosen, top } = pick(model.step(t, cache), temperature);
+    out.push({ id: chosen, top });
+    if (chosen === END) break;
+    t = chosen;
+  }
+  return out;
+}
+
+// ---------- ממשק ----------
+const $ = id => document.getElementById(id);
+const log = $("log");
+let model = null, tok = null;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function scrollDown() { log.scrollTop = log.scrollHeight; }
+
+function addUser(pieces) {
+  const msg = el("div", "msg user");
+  const bubble = el("div", "bubble");
+  let first = true, unknown = 0;
+  pieces.forEach(p => {
+    if (!first && !NO_SPACE_BEFORE.has(p.word)) bubble.append(" ");
+    first = false;
+    if (p.id === UNK) {
+      unknown++;
+      const s = el("span", "unk", p.word);
+      s.title = "ניצוץ לא מכיר את המילה הזו";
+      bubble.append(s);
+    } else bubble.append(p.word);
+  });
+  msg.append(bubble);
+  if (unknown) msg.append(el("span", "note", unknown === 1 ? "מילה אחת שניצוץ לא מכיר מסומנת בקו" : `${unknown} מילים שניצוץ לא מכיר מסומנות בקו`));
+  log.append(msg);
+  scrollDown();
+}
+
+function stepRow(s) {
+  const row = el("div", "step");
+  row.append(el("span", "chosen", s.id === END ? "סוף" : tok.decodeWord(s.id)));
+  const cands = el("div", "cands");
+  for (const c of s.top) {
+    const chip = el("span", "cand" + (c.id === s.id ? " picked" : ""));
+    chip.append(c.id === END ? "סוף" : tok.decodeWord(c.id));
+    const meter = el("span", "meter");
+    const bar = el("span");
+    bar.style.width = Math.max(4, Math.round(c.p * 100)) + "%";
+    meter.append(bar);
+    chip.append(meter, el("i", null, Math.round(c.p * 100) + "%"));
+    cands.append(chip);
+  }
+  row.append(cands);
+  return row;
+}
+
+async function addBot(steps) {
+  const msg = el("div", "msg bot");
+  const bubble = el("div", "bubble");
+  msg.append(bubble);
+  log.append(msg);
+  const words = [];
+  for (const s of steps) {
+    if (s.id === END) break;
+    words.push(tok.decodeWord(s.id));
+    bubble.textContent = joinWords(words);
+    scrollDown();
+    if (!reduceMotion) await new Promise(r => setTimeout(r, 55));
+  }
+  if (!words.length) bubble.textContent = "…";
+  const why = el("details", "why");
+  why.append(el("summary", null, "איך בחרתי כל מילה"));
+  const list = el("div", "steps");
+  steps.forEach(s => list.append(stepRow(s)));
+  why.append(list);
+  why.addEventListener("toggle", () => {
+    if (why.open) why.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" });
+  });
+  msg.append(why);
+  scrollDown();
+}
+
+let busy = false;
+async function ask(text) {
+  text = text.trim();
+  if (!text || !model || busy) return;
+  busy = true;
+  $("send").disabled = true;
+  const pieces = tok.pieces(text);
+  addUser(pieces);
+  const steps = reply(model, tok, pieces.map(p => p.id), parseFloat($("temp").value));
+  await addBot(steps);
+  busy = false;
+  $("send").disabled = false;
+}
+
+$("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const q = $("q");
+  const text = q.value;
+  q.value = "";
+  ask(text);
+  q.focus();
+});
+$("chips").addEventListener("click", e => {
+  const b = e.target.closest(".chip");
+  if (b) ask(b.textContent);
+});
+$("temp").addEventListener("input", e => { $("tempOut").textContent = (+e.target.value).toFixed(1); });
+
+fetch("chat_model.json")
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(async data => {
+    model = makeModel(data);
+    tok = makeTokenizer(data.vocab);
+    $("vitals").innerHTML = `<b>${model.params.toLocaleString("en-US")}</b> פרמטרים · <b>${data.vocab.length - SPECIAL.length}</b> מילים · <b>0</b> ספריות`;
+    $("status").textContent = "ניצוץ מוכן. כתבו לו משהו, או בחרו שאלה למטה.";
+    $("send").disabled = false;
+    await ask("שלום ניצוץ");
+  })
+  .catch(() => {
+    const s = $("status");
+    s.textContent = "לא הצלחתי לטעון את הקובץ chat_model.json. צריך לאמן את ניצוץ קודם: python3 train_chat.py";
+    s.classList.add("error");
+  });
+</script>

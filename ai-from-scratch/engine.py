@@ -5,10 +5,28 @@
 ומה הנגזרת "המקומית" שלו ביחס לכל אחד מהם. כך אפשר ללכת אחורה
 (backward) ולחשב, לפי כלל השרשרת, כמה כל פרמטר השפיע על השגיאה.
 
+כל חישוב נרשם על "סרט" (tape) לפי הסדר שבו קרה. בשלב הלמידה
+פשוט מריצים את הסרט אחורה, וכל צומת מעביר את הנגזרת שלו לילדים שלו.
+
 אין כאן שום ספרייה חיצונית: רק math מהספרייה הסטנדרטית של פייתון.
 """
 
 import math
+
+_tape = []          # כל החישובים מאז ה-backward האחרון, לפי הסדר
+_recording = True   # כבוי בזמן שיחה, כשלא צריך ללמוד
+
+
+class no_grad:
+    """with no_grad(): ... מריץ את המודל בלי לרשום כלום (חוסך זיכרון)."""
+
+    def __enter__(self):
+        global _recording
+        self._prev, _recording = _recording, False
+
+    def __exit__(self, *exc):
+        global _recording
+        _recording = self._prev
 
 
 class Value:
@@ -19,6 +37,8 @@ class Value:
         self.grad = 0.0
         self._children = children          # מאילו ערכים נוצרתי
         self._local_grads = local_grads    # d(אני) / d(כל ילד)
+        if children and _recording:
+            _tape.append(self)
 
     # ---- פעולות בסיס ----
     def __add__(self, other):
@@ -70,28 +90,17 @@ class Value:
 
     # ---- למידה: חישוב כל הנגזרות ----
     def backward(self):
-        # סידור טופולוגי (בלי רקורסיה, כדי לא להיתקע בגרפים גדולים)
-        order, seen, stack = [], set(), [(self, False)]
-        while stack:
-            node, done = stack.pop()
-            if done:
-                order.append(node)
-                continue
-            if id(node) in seen:
-                continue
-            seen.add(id(node))
-            stack.append((node, True))
-            for child in node._children:
-                if id(child) not in seen:
-                    stack.append((child, False))
-
+        """
+        כלל השרשרת: עוברים על הסרט מהסוף להתחלה. כל צומת נוצר אחרי
+        הילדים שלו, ולכן כשמגיעים אליו הנגזרת שלו כבר מלאה וסופית.
+        """
         self.grad = 1.0
-        for node in reversed(order):
+        for node in reversed(_tape):
             g = node.grad
-            if g == 0.0:
-                continue
-            for child, local in zip(node._children, node._local_grads):
-                child.grad += local * g
+            if g:
+                for child, local in zip(node._children, node._local_grads):
+                    child.grad += local * g
+        _tape.clear()
 
 
 # ---- פעולות "מאוחדות" שחוסכות המון צמתים ומאיצות את הכל ----
@@ -102,8 +111,41 @@ def vsum(values):
     return Value(sum(v.data for v in values), values, (1.0,) * len(values))
 
 
+def _sumprod(xs, ys):
+    return sum([x * y for x, y in zip(xs, ys)])
+
+
+_sumprod = getattr(math, "sumprod", _sumprod)   # מהיר יותר בפייתון 3.12 ומעלה
+
+
 def dot(a, b):
     """מכפלה סקלרית a·b בצומת אחד."""
-    a, b = tuple(a), tuple(b)
-    data = sum(x.data * y.data for x, y in zip(a, b))
-    return Value(data, a + b, tuple(y.data for y in b) + tuple(x.data for x in a))
+    ad = [x.data for x in a]
+    bd = [y.data for y in b]
+    return Value(_sumprod(ad, bd), (*a, *b), (*bd, *ad))
+
+
+def matvec(w, x):
+    """מטריצה כפול וקטור: צומת אחד לכל שורה."""
+    x = tuple(x)
+    xd = [v.data for v in x]
+    out = []
+    for row in w:
+        rd = [v.data for v in row]
+        out.append(Value(_sumprod(rd, xd), (*row, *x), (*xd, *rd)))
+    return out
+
+
+def cross_entropy(logits, target):
+    """
+    כמה המודל "הופתע" מהתשובה הנכונה: -log(הסתברות שנתן לה).
+    בצומת אחד, עם הנגזרת המוכנה: softmax פחות 1 במקום הנכון.
+    """
+    logits = tuple(logits)
+    m = max(v.data for v in logits)
+    exps = [math.exp(v.data - m) for v in logits]
+    total = sum(exps)
+    probs = [e / total for e in exps]
+    grads = probs[:]
+    grads[target] -= 1.0
+    return Value(-math.log(probs[target]), logits, tuple(grads))

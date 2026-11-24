@@ -12,7 +12,7 @@ import json
 import math
 import random
 
-from engine import Value, dot, vsum
+from engine import Value, dot, matvec, no_grad, vsum
 
 
 # ---------- אבני בניין ----------
@@ -23,7 +23,7 @@ def matrix(rows, cols, std=0.08):
 
 def linear(x, w):
     """x: וקטור, w: מטריצה (שורה לכל פלט)."""
-    return [dot(row, x) for row in w]
+    return matvec(w, x)
 
 
 def softmax(logits):
@@ -64,47 +64,57 @@ class GPT:
     def parameters(self):
         return [v for mat in self.weights.values() for row in mat for v in row]
 
-    def forward(self, tokens):
-        """מחזיר logits (ציון לכל אות אפשרית) לכל מיקום ברצף."""
+    def new_cache(self):
+        """זיכרון של מה שכבר נקרא (keys/values לכל שכבה)."""
+        return {"keys": [[] for _ in range(self.n_layer)],
+                "vals": [[] for _ in range(self.n_layer)]}
+
+    def step(self, tok, cache):
+        """קורא טוקן אחד (אות או מילה), זוכר אותו, ומחזיר ציון לכל טוקן אפשרי הבא."""
         W, D = self.weights, self.head_dim
-        keys = [[] for _ in range(self.n_layer)]
-        vals = [[] for _ in range(self.n_layer)]
-        all_logits = []
+        keys, vals = cache["keys"], cache["vals"]
+        pos = len(keys[0])
 
-        for pos, tok in enumerate(tokens):
-            x = [t + p for t, p in zip(W["wte"][tok], W["wpe"][pos])]
-            x = rmsnorm(x)
+        x = [t + p for t, p in zip(W["wte"][tok], W["wpe"][pos])]
+        x = rmsnorm(x)
 
-            for i in range(self.n_layer):
-                # --- Attention ---
-                h = rmsnorm(x)
-                q = linear(h, W[f"l{i}.wq"])
-                keys[i].append(linear(h, W[f"l{i}.wk"]))
-                vals[i].append(linear(h, W[f"l{i}.wv"]))
+        for i in range(self.n_layer):
+            # --- Attention: על מה ממה שקראתי עד עכשיו לשים לב? ---
+            h = rmsnorm(x)
+            q = linear(h, W[f"l{i}.wq"])
+            keys[i].append(linear(h, W[f"l{i}.wk"]))
+            vals[i].append(linear(h, W[f"l{i}.wv"]))
 
-                attn_out = []
-                for hd in range(self.n_head):
-                    s = slice(hd * D, (hd + 1) * D)
-                    qh = q[s]
-                    scores = [dot(qh, k[s]) / math.sqrt(D) for k in keys[i]]
-                    weights = softmax(scores)
-                    for j in range(hd * D, (hd + 1) * D):
-                        attn_out.append(dot(weights, [v[j] for v in vals[i]]))
-                x = [a + b for a, b in zip(x, linear(attn_out, W[f"l{i}.wo"]))]
+            attn_out = []
+            for hd in range(self.n_head):
+                s = slice(hd * D, (hd + 1) * D)
+                qh = q[s]
+                scores = [dot(qh, k[s]) / math.sqrt(D) for k in keys[i]]
+                weights = softmax(scores)
+                for j in range(hd * D, (hd + 1) * D):
+                    attn_out.append(dot(weights, [v[j] for v in vals[i]]))
+            x = [a + b for a, b in zip(x, linear(attn_out, W[f"l{i}.wo"]))]
 
-                # --- MLP ---
-                h = rmsnorm(x)
-                h = [v.relu() for v in linear(h, W[f"l{i}.fc1"])]
-                x = [a + b for a, b in zip(x, linear(h, W[f"l{i}.fc2"]))]
+            # --- MLP: לחשוב על מה שנאסף ---
+            h = rmsnorm(x)
+            h = [v.relu() for v in linear(h, W[f"l{i}.fc1"])]
+            x = [a + b for a, b in zip(x, linear(h, W[f"l{i}.fc2"]))]
 
-            all_logits.append(linear(rmsnorm(x), W["head"]))
-        return all_logits
+        return rmsnorm(x)
+
+    def logits(self, hidden):
+        return linear(hidden, self.weights["head"])
+
+    def forward(self, tokens):
+        """מחזיר logits (ציון לכל טוקן אפשרי) לכל מיקום ברצף."""
+        cache = self.new_cache()
+        return [self.logits(self.step(t, cache)) for t in tokens]
 
     # ---------- שמירה וטעינה ----------
 
     def save(self, path, vocab):
         data = {"config": self.config, "vocab": vocab,
-                "weights": {k: [[v.data for v in row] for row in m]
+                "weights": {k: [[round(v.data, 5) for v in row] for row in m]
                             for k, m in self.weights.items()}}
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
@@ -125,15 +135,32 @@ class GPT:
 
 def sample(model, vocab, temperature=0.8, prefix=""):
     """vocab[0] הוא סימן "התחלה/סוף". מייצר מילה אחת חדשה."""
+    with no_grad():
+        return _sample(model, vocab, temperature, prefix)
+
+
+def _sample(model, vocab, temperature, prefix):
     stoi = {ch: i for i, ch in enumerate(vocab)}
     tokens = [0] + [stoi[c] for c in prefix if c in stoi]
-    out = prefix
-    while len(tokens) < model.block_size:
-        logits = model.forward(tokens)[-1]
-        probs = softmax([l / temperature for l in logits])
-        nxt = random.choices(range(len(probs)), weights=[p.data for p in probs])[0]
+    cache = model.new_cache()
+    for t in tokens[:-1]:
+        model.step(t, cache)
+    out, tok = prefix, tokens[-1]
+    for _ in range(model.block_size - len(tokens)):
+        nxt = pick(model.logits(model.step(tok, cache)), temperature)
         if nxt == 0:
             break
-        tokens.append(nxt)
         out += vocab[nxt]
+        tok = nxt
     return out
+
+
+def pick(logits, temperature=0.8, top_k=None):
+    """בוחר את הטוקן הבא לפי ההסתברויות (עם טמפרטורה: נמוכה = בטוח, גבוהה = יצירתי)."""
+    scores = [v.data / temperature for v in logits]
+    idx = range(len(scores))
+    if top_k:
+        idx = sorted(idx, key=lambda i: -scores[i])[:top_k]
+    m = max(scores[i] for i in idx)
+    weights = [math.exp(scores[i] - m) for i in idx]
+    return random.choices(list(idx), weights=weights)[0]

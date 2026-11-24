@@ -7,4 +7,4 @@ Building a game
 
 ## ai-from-scratch
 
-מודל שפה (GPT קטנטן) שנכתב מאפס בפייתון נקי, בלי שום ספרייה: [ai-from-scratch/README.md](ai-from-scratch/README.md)
+ניצוץ: בוט שאפשר לדבר איתו, ומודל שפה (GPT קטנטן) שנכתב מאפס בפייתון נקי, בלי שום ספרייה: [ai-from-scratch/README.md](ai-from-scratch/README.md)
