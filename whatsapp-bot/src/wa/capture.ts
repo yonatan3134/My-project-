@@ -1,5 +1,6 @@
 import { getAllBinaryNodeChildren, getBinaryNodeChild, proto, type BinaryNode, type WASocket } from "baileys";
 import type { Store } from "../db.js";
+import { fetchChannelRaw } from "./channels.js";
 
 /**
  * "Learn from the phone": the owner posts something in a channel from the
@@ -25,7 +26,7 @@ export interface CapturedPost {
 }
 
 const SKIP_ATTRS = new Set(["id", "server_id", "t", "from", "to", "message_id", "views_count"]);
-const SKIP_CHILDREN = new Set(["plaintext", "reactions", "views_count", "edited"]);
+const SKIP_CHILDREN = new Set(["plaintext", "reactions", "views_count", "forwards_count", "edited"]);
 
 function collect(node: BinaryNode, out: BinaryNode[]): void {
   for (const child of getAllBinaryNodeChildren(node)) {
@@ -44,9 +45,9 @@ function firstText(v: unknown): string {
   return "";
 }
 
-export function parseCaptured(result: BinaryNode): CapturedPost[] {
+export function parseCaptured(result: BinaryNode | undefined): CapturedPost[] {
   const nodes: BinaryNode[] = [];
-  collect(result, nodes);
+  if (result) collect(result, nodes);
   const out: CapturedPost[] = [];
   for (const node of nodes) {
     const plain = getBinaryNodeChild(node, "plaintext");
@@ -72,7 +73,7 @@ const KNOWN = new Set(["conversation", "extendedTextMessage", "imageMessage", "v
 
 /** Reads the channel's latest posts and keeps a template for each kind the bot does not know yet. */
 export async function learnFromChannel(sock: WASocket, store: Store, jid: string): Promise<{ posts: CapturedPost[]; learned: string[] }> {
-  const posts = parseCaptured((await sock.newsletterFetchMessages(jid, 15, 0, 0)) as BinaryNode);
+  const posts = parseCaptured(await fetchChannelRaw(sock, jid, 15));
   const learned: string[] = [];
   for (const p of posts) {
     const key = p.kind === "questionMessage" ? "question" : !KNOWN.has(p.kind) ? p.kind : null;

@@ -111,9 +111,9 @@ export interface ChannelPost {
  * question / caption), the total number of emoji reactions and the view count.
  * Best effort: fields WhatsApp does not send count as 0.
  */
-export function parseChannelPosts(result: BinaryNode): ChannelPost[] {
+export function parseChannelPosts(result: BinaryNode | undefined): ChannelPost[] {
   const nodes: BinaryNode[] = [];
-  collectMessages(result, nodes);
+  if (result) collectMessages(result, nodes);
   const out: ChannelPost[] = [];
   for (const node of nodes) {
     const plain = getBinaryNodeChild(node, "plaintext");
@@ -143,8 +143,26 @@ export function parseChannelPosts(result: BinaryNode): ChannelPost[] {
   return out;
 }
 
+/**
+ * A channel's latest posts as WhatsApp stores them (text, reactions, views).
+ * Asked the way the official clients ask (<messages type="jid">, as also used
+ * by whatsmeow). The library's own request (<message_updates>) gets no answer
+ * from WhatsApp and only times out, so it is kept as a fallback only.
+ */
+export async function fetchChannelRaw(sock: WASocket, jid: string, count = 50): Promise<BinaryNode> {
+  const res = (await sock.query({
+    tag: "iq",
+    attrs: { id: sock.generateMessageTag(), type: "get", xmlns: "newsletter", to: "s.whatsapp.net" },
+    content: [{ tag: "messages", attrs: { type: "jid", jid, count: String(count) } }],
+  })) as BinaryNode | undefined;
+  if (res) return res;
+  const old = (await sock.newsletterFetchMessages(jid, count, 0, 0)) as BinaryNode | undefined;
+  if (old) return old;
+  throw new Error("WhatsApp did not answer the request for the channel's posts");
+}
+
 export async function fetchChannelPosts(sock: WASocket, jid: string, count = 50): Promise<ChannelPost[]> {
-  return parseChannelPosts((await sock.newsletterFetchMessages(jid, count, 0, 0)) as BinaryNode);
+  return parseChannelPosts(await fetchChannelRaw(sock, jid, count));
 }
 
 export async function recentPostTexts(sock: WASocket, jid: string, count = 30): Promise<string[]> {
