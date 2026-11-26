@@ -1,24 +1,13 @@
-import Anthropic from 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm';
+/* global Blockly */
+import { TOOLBOX, generateCode, pageTitle } from './blocks.js';
+import { buildHtml } from './runtime.js';
+import { assist } from './assistant.js';
 import { TEMPLATES } from './templates.js';
 
-const MODEL = 'claude-opus-5-5';
-const KEY_STORE = 'appBuilder.apiKey';
 const PROJECTS_STORE = 'appBuilder.projects';
 const CURRENT_STORE = 'appBuilder.current';
 
-const SYSTEM_PROMPT = `You are an app builder. The user (often a young, non-technical person writing in Hebrew) describes an app, game or website, and you build it.
-
-Rules for every answer:
-- Reply with ONE complete, self-contained HTML document inside a single \`\`\`html code block. All CSS and JavaScript go inline in that file.
-- Before the code block, write one or two short, friendly sentences in the user's language saying what you built or changed. After the code block, write nothing.
-- When the user asks for a change, you get the current code. Return the whole updated file, not a diff, and keep everything they did not ask to change.
-- Default to Hebrew text with <html lang="he" dir="rtl"> unless the user writes in another language or asks otherwise.
-- Make it look polished and modern, work well on phones and desktops, and be fun to use.
-- No external network requests, APIs, or build steps. Images: emoji, CSS, inline SVG or canvas drawings. You may load libraries from https://cdn.jsdelivr.net/npm/ only when clearly helpful, pinned to an exact version.
-- The page runs in a sandboxed iframe: localStorage, sessionStorage, cookies and IndexedDB throw. Keep state in memory, or wrap any storage access in try/catch so the app still works.
-- Make sure the code runs without errors.`;
-
-// ---------- storage helpers ----------
+// ---------- storage ----------
 const store = {
   get(key, fallback) {
     try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; }
@@ -26,28 +15,59 @@ const store = {
   set(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ }
   },
-  remove(key) {
-    try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
-  },
+};
+
+const STARTER = {
+  blocks: { languageVersion: 0, blocks: [
+    { type: 'ui_page', x: 20, y: 20, fields: { TITLE: 'האפליקציה שלי', BG: '#f1ecff' }, inputs: { CONTENT: { block: {
+      type: 'ui_title', fields: { TEXT: 'שלום עולם! 👋', NAME: 'כותרת' }, next: { block: {
+        type: 'ui_button', fields: { TEXT: 'לחץ עליי', COLOR: '#6a4cff', NAME: 'כפתור' } } } } } } },
+    { type: 'ev_click', x: 20, y: 200, fields: { NAME: 'כפתור' }, inputs: { DO: { block: {
+      type: 'act_say', inputs: { VALUE: { block: { type: 'text', fields: { TEXT: 'כל הכבוד! 🎉' } } } }, next: { block: { type: 'act_confetti' } } } } } },
+  ] },
 };
 
 // ---------- state ----------
-let projects = store.get(PROJECTS_STORE, []);
+let projects = store.get(PROJECTS_STORE, []).map(p => ({ mode: p.blocks ? 'blocks' : 'code', messages: [], ...p }));
 let current = null;
-let abortCtrl = null;
+let loading = false;
+let renderTimer = null;
 
 const $ = (id) => document.getElementById(id);
 const els = {
-  main: $('main'), chat: $('chat'), prompt: $('prompt'), status: $('status'),
-  send: $('sendBtn'), stop: $('stopBtn'), select: $('projectSelect'),
-  frame: $('frame'), empty: $('empty'), code: $('code'), frameWrap: $('frameWrap'),
-  settings: $('settings'), keyInput: $('keyInput'),
+  main: $('main'), chat: $('chat'), prompt: $('prompt'), select: $('projectSelect'),
+  frame: $('frame'), frameWrap: $('frameWrap'), code: $('code'), codeHint: $('codeHint'),
+  blocksPane: $('blocksPane'), codePane: $('codePane'), codeNote: $('codeNote'), toCodeBtn: $('toCodeBtn'),
 };
+
+const ws = Blockly.inject('blockly', {
+  toolbox: TOOLBOX,
+  rtl: true,
+  renderer: 'zelos',
+  media: 'vendor/blockly/media/',
+  trashcan: true,
+  grid: { spacing: 24, length: 2, colour: '#e3def8', snap: true },
+  zoom: { controls: true, wheel: true, startScale: 0.8, maxScale: 2, minScale: 0.3 },
+  move: { scrollbars: true, drag: true, wheel: false },
+});
+
+// Show the top-right corner of the blocks (where Hebrew blocks start), not the middle.
+function showStart() {
+  Blockly.svgResize(ws);
+  const mm = ws.getMetricsManager();
+  const content = mm.getContentMetrics(true);
+  const view = mm.getViewMetrics(true);
+  if (!content.width) return;
+  const scale = ws.scale;
+  const left = content.left + content.width + 30 - view.width;
+  const top = content.top - 30;
+  ws.scroll(-left * scale, -top * scale);
+}
 
 function newId() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 
-function createProject(name = 'פרויקט חדש', html = '') {
-  const p = { id: newId(), name, html, messages: [], updated: Date.now() };
+function createProject({ name = 'פרויקט חדש', mode = 'blocks', blocks = STARTER, html = '' } = {}) {
+  const p = { id: newId(), name, mode, blocks: mode === 'blocks' ? JSON.parse(JSON.stringify(blocks)) : null, html, messages: [], updated: Date.now() };
   projects.unshift(p);
   save();
   return p;
@@ -59,73 +79,60 @@ function save() {
   if (current) store.set(CURRENT_STORE, current.id);
 }
 
-// ---------- rendering ----------
+// ---------- building the app ----------
+function currentHtml() {
+  if (current.mode === 'code') return current.html;
+  return buildHtml(generateCode(ws), pageTitle(ws));
+}
+
+function render() {
+  const html = currentHtml();
+  if (current.mode === 'blocks') {
+    current.html = html;
+    els.code.value = html;
+  }
+  els.frame.srcdoc = html;
+}
+
+function scheduleRender() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(render, 400);
+}
+
+ws.addChangeListener((e) => {
+  if (loading || e.isUiEvent || !current || current.mode !== 'blocks') return;
+  current.blocks = Blockly.serialization.workspaces.save(ws);
+  const title = pageTitle(ws);
+  if (current.name === 'פרויקט חדש' && title && title !== 'האפליקציה שלי') { current.name = title; renderProjects(); }
+  save();
+  scheduleRender();
+});
+
+// ---------- projects ----------
 function renderProjects() {
   els.select.innerHTML = '';
   for (const p of projects) {
     const opt = document.createElement('option');
     opt.value = p.id;
-    opt.textContent = p.name;
-    if (current && p.id === current.id) opt.selected = true;
+    opt.textContent = (p.mode === 'code' ? '</> ' : '🧩 ') + p.name;
+    opt.selected = current && p.id === current.id;
     els.select.append(opt);
   }
 }
 
-function renderChat() {
-  els.chat.innerHTML = '';
-  if (!current.messages.length) {
-    els.chat.append(welcome());
-    return;
+function loadBlocks(json) {
+  loading = true;
+  try {
+    ws.clear();
+    if (json) Blockly.serialization.workspaces.load(json, ws);
+  } catch (err) {
+    console.error(err);
+    addBubble('bot', '⚠️ חלק מהבלוקים לא נטענו.');
+  } finally {
+    loading = false;
   }
-  for (const m of current.messages) addBubble(m.role, m.text);
-}
-
-function welcome() {
-  const div = document.createElement('div');
-  div.className = 'msg bot welcome';
-  div.innerHTML = `<h2>היי! 👋 מה נבנה היום?</h2>
-    <p>תאר במילים שלך אפליקציה, משחק או אתר, ואני אבנה אותו. אחר כך אפשר לבקש שינויים: "תעשה את הכפתור אדום", "תוסיף ניקוד"...</p>
-    <div class="label">💡 רעיונות</div><div class="chips" id="ideas"></div>
-    <div class="label">📦 תבניות מוכנות (עובדות גם בלי מפתח)</div><div class="chips" id="tpls"></div>`;
-  const ideas = [
-    'משחק שבו תופסים פירות שנופלים עם סל',
-    'אתר למסעדת פיצה עם תפריט והזמנה',
-    'חידון טריוויה על חיות עם ניקוד',
-    'אפליקציית מזג אוויר מצוירת עם מצבי רוח',
-    'שעון עצר וטיימר לאימונים',
-    'אתר תיק עבודות אישי לצלם',
-  ];
-  const ideasEl = div.querySelector('#ideas');
-  for (const idea of ideas) {
-    const b = document.createElement('button');
-    b.className = 'chip'; b.textContent = idea;
-    b.onclick = () => { els.prompt.value = idea; els.prompt.focus(); };
-    ideasEl.append(b);
-  }
-  const tplEl = div.querySelector('#tpls');
-  for (const t of TEMPLATES) {
-    const b = document.createElement('button');
-    b.className = 'chip'; b.textContent = t.name;
-    b.onclick = () => useTemplate(t);
-    tplEl.append(b);
-  }
-  return div;
-}
-
-function addBubble(role, text) {
-  const div = document.createElement('div');
-  div.className = 'msg ' + (role === 'user' ? 'user' : role === 'error' ? 'err' : 'bot');
-  div.textContent = text;
-  els.chat.append(div);
-  els.chat.scrollTop = els.chat.scrollHeight;
-  return div;
-}
-
-function showPreview(html) {
-  const has = !!html.trim();
-  els.empty.hidden = has;
-  els.frame.hidden = !has;
-  if (has) els.frame.srcdoc = html;
+  ws.clearUndo();
+  showStart();
 }
 
 function loadProject(p) {
@@ -133,218 +140,158 @@ function loadProject(p) {
   store.set(CURRENT_STORE, p.id);
   renderProjects();
   renderChat();
-  els.code.value = p.html;
-  showPreview(p.html);
+  const isCode = p.mode === 'code';
+  els.codeNote.hidden = !isCode;
+  els.code.readOnly = !isCode;
+  els.toCodeBtn.hidden = isCode;
+  els.codeHint.textContent = isCode ? 'עורכים כאן את הקוד ישירות' : 'הקוד נוצר אוטומטית מהבלוקים (קריאה בלבד)';
+  loadBlocks(isCode ? null : p.blocks);
+  if (isCode) els.code.value = p.html;
+  render();
 }
 
-function useTemplate(t) {
-  current.html = t.html;
-  if (current.name === 'פרויקט חדש') current.name = t.name.replace(/^\S+\s/, '');
-  current.messages.push({ role: 'user', text: `התחל מהתבנית: ${t.name}` });
-  current.messages.push({ role: 'assistant', text: 'הנה התבנית! 🎉 עכשיו אפשר לבקש שינויים, או לערוך את הקוד בלשונית "קוד".' });
-  save();
-  loadProject(current);
-  setMobileView('stage');
+// ---------- assistant chat ----------
+function addBubble(role, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+  div.textContent = text;
+  els.chat.append(div);
+  els.chat.scrollTop = els.chat.scrollHeight;
+  return div;
 }
 
-// ---------- Claude ----------
-function extractHtml(text) {
-  const fence = text.match(/```html\s*\n([\s\S]*?)(```|$)/i);
-  if (fence) return fence[1];
-  const start = text.search(/<!DOCTYPE html|<html/i);
-  return start >= 0 ? text.slice(start) : '';
+function renderChat() {
+  els.chat.innerHTML = '';
+  const w = document.createElement('div');
+  w.className = 'msg bot welcome';
+  w.innerHTML = '<b>היי! 👋 אני העוזר שלך</b>כתוב לי מה לבנות ואני אבנה את זה מבלוקים. אחר כך אפשר לגרור בלוקים ולשנות הכל, או לבקש ממני שינויים.';
+  const chips = document.createElement('div');
+  chips.className = 'chips';
+  const ideas = ['משחק שתופסים בו חתולים', 'חידון על חיות', 'אתר למסעדת פיצה', 'רשימת משימות', 'טיימר של 5 דקות', 'קוביה', 'מחשבון', 'משחק זיכרון', 'משחק עם חצים', 'מה אתה יודע?'];
+  for (const idea of ideas) {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.textContent = idea;
+    b.onclick = () => send(idea);
+    chips.append(b);
+  }
+  w.append(chips);
+  els.chat.append(w);
+  for (const m of current.messages) addBubble(m.role, m.text);
 }
 
-function explanation(text) {
-  const idx = text.search(/```html/i);
-  const before = (idx >= 0 ? text.slice(0, idx) : text).trim();
-  return before || 'מוכן! ✨';
-}
+function send(textArg) {
+  const text = (textArg ?? els.prompt.value).trim();
+  if (!text) return;
+  els.prompt.value = '';
 
-function buildRequestText(request) {
-  if (!current.html.trim()) return request;
-  const history = current.messages.filter(m => m.role === 'user').slice(-8).map(m => '- ' + m.text).join('\n');
-  return `Earlier requests in this project:\n${history || '(none)'}\n\nCurrent code:\n\`\`\`html\n${current.html}\n\`\`\`\n\nNew request: ${request}`;
-}
+  const blocksNow = current.mode === 'blocks' ? Blockly.serialization.workspaces.save(ws) : null;
+  const pristine = current.mode === 'blocks' && JSON.stringify(current.blocks) === JSON.stringify(STARTER);
+  const result = assist(text, pristine ? null : blocksNow);
 
-async function build() {
-  const request = els.prompt.value.trim();
-  if (!request || abortCtrl) return;
-  const apiKey = store.get(KEY_STORE, '');
-  if (!apiKey) {
-    addBubble('error', 'כדי לבנות מתיאור במילים צריך מפתח Claude API. אפשר להוסיף אותו ב־⚙️ הגדרות, או להתחיל מתבנית מוכנה.');
-    openSettings();
+  // A brand-new app goes into a new project, so nothing the user made gets overwritten.
+  if (result.fresh) {
+    const keep = !pristine && (current.mode === 'code' || (blocksNow?.blocks?.blocks || []).length);
+    let target = current;
+    if (result.code) {
+      const tpl = TEMPLATES.find(t => t.id === result.code);
+      if (keep) target = createProject({ name: tpl.name.replace(/^\S+\s/, ''), mode: 'code', html: tpl.html });
+      else Object.assign(target, { name: tpl.name.replace(/^\S+\s/, ''), mode: 'code', blocks: null, html: tpl.html });
+    } else {
+      const title = result.workspace.blocks.blocks.find(b => b.type === 'ui_page')?.fields?.TITLE || 'פרויקט חדש';
+      if (keep) target = createProject({ name: title, blocks: result.workspace });
+      else Object.assign(target, { name: title, mode: 'blocks', blocks: result.workspace });
+    }
+    target.messages.push({ role: 'user', text }, { role: 'bot', text: result.reply + (keep ? '\n\n(שמרתי את זה כפרויקט חדש, הפרויקט הקודם נשאר ברשימה)' : '') });
+    save();
+    loadProject(target);
+    if (!result.code) { ws.cleanUp(); showStart(); }
     return;
   }
 
-  if (!current.messages.length) els.chat.innerHTML = '';
-  if (current.name === 'פרויקט חדש') {
-    current.name = request.length > 28 ? request.slice(0, 28) + '…' : request;
-    renderProjects();
+  current.messages.push({ role: 'user', text });
+  addBubble('user', text);
+  if (result.workspace && current.mode === 'blocks') {
+    loadBlocks(result.workspace);
+    current.blocks = Blockly.serialization.workspaces.save(ws);
+    render();
+  } else if (result.workspace) {
+    result.reply = 'הפרויקט הזה כתוב בקוד, אז אני לא יכול לשנות אותו מבלוקים. אפשר ליצור פרויקט בלוקים חדש ➕';
   }
-  const userText = buildRequestText(request);
-  current.messages.push({ role: 'user', text: request });
-  addBubble('user', request);
-  els.prompt.value = '';
+  current.messages.push({ role: 'bot', text: result.reply });
+  addBubble('bot', result.reply);
   save();
-
-  const bubble = addBubble('assistant', '🤔 חושב...');
-  setBusy(true, 'חושב על התכנון...');
-  abortCtrl = new AbortController();
-
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  let text = '';
-  let lastPreview = 0;
-  try {
-    const stream = client.beta.messages.stream({
-      model: MODEL,
-      max_tokens: 64000,
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'high' },
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userText }],
-    }, { signal: abortCtrl.signal });
-
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        text += event.delta.text;
-        const html = extractHtml(text);
-        bubble.textContent = explanation(text);
-        if (html) {
-          setBusy(true, `כותב קוד... (${html.split('\n').length} שורות)`);
-          els.code.value = html;
-          if (Date.now() - lastPreview > 2500) { showPreview(html); lastPreview = Date.now(); }
-        }
-      }
-    }
-    const final = await stream.finalMessage();
-
-    if (final.stop_reason === 'refusal') {
-      bubble.className = 'msg err';
-      bubble.textContent = 'לא יכולתי לבנות את זה. נסה לנסח את הבקשה אחרת 🙏';
-      els.code.value = current.html;
-      showPreview(current.html);
-      current.messages.push({ role: 'error', text: bubble.textContent });
-      return;
-    }
-
-    const html = extractHtml(text).trim();
-    if (!html) {
-      bubble.textContent = text.trim() || 'לא התקבל קוד. נסה שוב.';
-      current.messages.push({ role: 'assistant', text: bubble.textContent });
-      return;
-    }
-    if (final.stop_reason === 'max_tokens') {
-      bubble.textContent = explanation(text) + '\n⚠️ הקוד ארוך מדי ונחתך. נסה לבקש גרסה פשוטה יותר.';
-    }
-    current.html = html + '\n';
-    current.messages.push({ role: 'assistant', text: bubble.textContent });
-    els.code.value = current.html;
-    showPreview(current.html);
-    setMobileView('stage');
-  } catch (err) {
-    els.code.value = current.html;
-    showPreview(current.html);
-    let msg;
-    if (abortCtrl?.signal.aborted) msg = 'הבנייה נעצרה.';
-    else if (err instanceof Anthropic.AuthenticationError) msg = 'המפתח לא תקין. בדוק אותו ב־⚙️ הגדרות.';
-    else if (err instanceof Anthropic.RateLimitError) msg = 'יותר מדי בקשות כרגע. חכה דקה ונסה שוב.';
-    else if (err instanceof Anthropic.APIConnectionError) msg = 'אין חיבור לשרת. בדוק את האינטרנט ונסה שוב.';
-    else if (err instanceof Anthropic.APIError) msg = `שגיאה מהשרת (${err.status ?? ''}): ${err.message}`;
-    else msg = 'משהו השתבש: ' + (err?.message || err);
-    bubble.className = 'msg err';
-    bubble.textContent = msg;
-    current.messages.push({ role: 'error', text: msg });
-  } finally {
-    abortCtrl = null;
-    setBusy(false);
-    save();
-  }
-}
-
-function setBusy(busy, status = '') {
-  els.send.disabled = busy;
-  els.stop.hidden = !busy;
-  els.status.textContent = status;
-}
-
-// ---------- settings ----------
-function openSettings() {
-  els.keyInput.value = store.get(KEY_STORE, '');
-  els.settings.showModal();
-}
-
-// ---------- mobile ----------
-function setMobileView(view) {
-  els.main.className = 'show-' + view;
-  document.querySelectorAll('[data-mview]').forEach(b => b.classList.toggle('on', b.dataset.mview === view));
 }
 
 // ---------- wiring ----------
-els.send.onclick = build;
-els.stop.onclick = () => abortCtrl?.abort();
+$('sendBtn').onclick = () => send();
 els.prompt.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) build();
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
-
-$('settingsBtn').onclick = openSettings;
-$('closeSettingsBtn').onclick = () => els.settings.close();
-$('saveKeyBtn').onclick = () => {
-  const key = els.keyInput.value.trim();
-  if (key) store.set(KEY_STORE, key); else store.remove(KEY_STORE);
-  els.settings.close();
-};
-$('clearKeyBtn').onclick = () => { store.remove(KEY_STORE); els.keyInput.value = ''; };
 
 els.select.onchange = () => {
   const p = projects.find(x => x.id === els.select.value);
-  if (p && !abortCtrl) loadProject(p);
+  if (p) loadProject(p);
 };
-$('newBtn').onclick = () => { if (!abortCtrl) loadProject(createProject()); };
+$('newBtn').onclick = () => loadProject(createProject());
+$('newBlocksBtn').onclick = () => loadProject(createProject());
 $('renameBtn').onclick = () => {
   const name = prompt('שם חדש לפרויקט:', current.name);
   if (name && name.trim()) { current.name = name.trim(); save(); renderProjects(); }
 };
 $('deleteBtn').onclick = () => {
-  if (abortCtrl || !confirm(`למחוק את "${current.name}"?`)) return;
+  if (!confirm(`למחוק את "${current.name}"?`)) return;
   projects = projects.filter(p => p.id !== current.id);
   if (!projects.length) createProject();
   save();
   loadProject(projects[0]);
 };
 
-document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
-  document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('on', x === b));
-  const code = b.dataset.view === 'code';
-  els.code.hidden = !code;
-  els.frameWrap.hidden = code;
-  if (!code) showPreview(current.html);
+$('undoBtn').onclick = () => ws.undo(false);
+$('redoBtn').onclick = () => ws.undo(true);
+$('tidyBtn').onclick = () => ws.cleanUp();
+
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x === b));
+  const code = b.dataset.tab === 'code';
+  els.codePane.hidden = !code;
+  els.blocksPane.hidden = code;
+  if (!code) showStart();
 });
 document.querySelectorAll('[data-device]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-device]').forEach(x => x.classList.toggle('on', x === b));
   els.frameWrap.classList.toggle('phone', b.dataset.device === 'phone');
 });
-document.querySelectorAll('[data-mview]').forEach(b => b.onclick = () => setMobileView(b.dataset.mview));
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('on', x === b));
+  els.main.className = 'v-' + b.dataset.view;
+  if (b.dataset.view === 'work') showStart();
+});
+window.addEventListener('resize', () => Blockly.svgResize(ws));
 
-els.code.addEventListener('input', () => { current.html = els.code.value; save(); });
-$('runBtn').onclick = () => { els.frame.srcdoc = ''; showPreview(current.html); };
-$('copyBtn').onclick = async () => {
-  try { await navigator.clipboard.writeText(current.html); els.status.textContent = 'הקוד הועתק 📋'; }
-  catch { els.code.hidden = false; els.code.select(); }
+els.code.addEventListener('input', () => {
+  if (current.mode !== 'code') return;
+  current.html = els.code.value;
+  save();
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => { els.frame.srcdoc = current.html; }, 800);
+});
+els.toCodeBtn.onclick = () => {
+  if (!confirm('להמיר את הפרויקט לקוד חופשי? אחרי זה לא תוכל לערוך אותו בבלוקים (העותק בבלוקים יישמר כפרויקט נפרד).')) return;
+  const copy = createProject({ name: current.name + ' (קוד)', mode: 'code', html: currentHtml() });
+  loadProject(copy);
+  document.querySelector('[data-tab="code"]').click();
 };
+
+$('runBtn').onclick = () => { els.frame.srcdoc = ''; render(); };
 $('downloadBtn').onclick = () => {
-  if (!current.html.trim()) return;
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([current.html], { type: 'text/html' }));
+  a.href = URL.createObjectURL(new Blob([currentHtml()], { type: 'text/html' }));
   a.download = (current.name.replace(/[\\/:*?"<>|]/g, '').trim() || 'app') + '.html';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
 $('openBtn').onclick = () => {
-  if (!current.html.trim()) return;
-  // Run the app inside a sandboxed iframe so it can't reach this page's storage (where the API key lives).
+  // The app runs inside a sandboxed iframe so it can't reach this page's saved projects.
   const win = window.open('', '_blank');
   if (!win) return;
   win.document.title = current.name;
@@ -352,7 +299,7 @@ $('openBtn').onclick = () => {
   const frame = win.document.createElement('iframe');
   frame.setAttribute('sandbox', els.frame.getAttribute('sandbox'));
   frame.style.cssText = 'border:0;width:100vw;height:100vh;display:block';
-  frame.srcdoc = current.html;
+  frame.srcdoc = currentHtml();
   win.document.body.append(frame);
 };
 

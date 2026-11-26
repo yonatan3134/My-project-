@@ -7,4 +7,4 @@ Building a game
 
 ## app-builder
 
-✨ בונה האפליקציות: מתארים במילים אפליקציה, משחק או אתר, ו-Claude בונה אותם. פרטים: [app-builder/README.md](app-builder/README.md)
+✨ בונה האפליקציות: בונים אפליקציות, משחקים ואתרים עם בלוקים או עם עוזר שמבין עברית, בלי אינטרנט ובלי מפתחות. פרטים: [app-builder/README.md](app-builder/README.md)
