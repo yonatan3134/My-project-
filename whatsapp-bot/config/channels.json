@@ -24,6 +24,21 @@
       "poll": 8,
       "image": 2,
       "video": 1
+    },
+    "group": "wyr"
+  },
+  {
+    "id": "would-you-rather-2",
+    "name": "מה אתה מעדיף",
+    "invite": "https://whatsapp.com/channel/0029Vb8pqgyA2pL9rlHijp3i",
+    "mode": "creative",
+    "topic": "דילמות 'מה אתה מעדיף' משעשעות עם שתי אפשרויות, והעוקבים מצביעים.",
+    "group": "wyr",
+    "formats": {
+      "text": 1,
+      "poll": 8,
+      "image": 2,
+      "video": 1
     }
   },
   {
