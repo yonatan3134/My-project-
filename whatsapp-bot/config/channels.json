@@ -344,6 +344,24 @@
     ]
   },
   {
+    "id": "brawl-stars",
+    "name": "Brawl Stars",
+    "invite": "https://whatsapp.com/channel/0029VbCjImB7j6g5H0vl0A2r",
+    "mode": "fandom",
+    "topic": "בראול סטארס: סקרי דעה, שאלות למעריצים, טיפים כלליים ועדכונים אמיתיים",
+    "rules": "לא לכתוב כעובדה שום דבר על עדכונים, דמויות חדשות, שינויי איזון, אירועים או תאריכים אלא אם זה מופיע בפריט מקור. סקרי דעה, שאלות והומור על המשחק מותרים.",
+    "group": "brawl",
+    "news": {
+      "queries": [
+        "בראול סטארס"
+      ],
+      "feeds": []
+    },
+    "youtube": [
+      "@BrawlStars"
+    ]
+  },
+  {
     "id": "prostars",
     "name": "Prostars🧸",
     "invite": "https://whatsapp.com/channel/0029Vb7oQLN8KMqpVEbSyj3Y",
