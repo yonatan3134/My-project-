@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inviteCode, loadConfig, parseConfig } from "../config.js";
 
-test("the shipped configuration is valid and lists all 34 channels once", () => {
+test("the shipped configuration is valid and lists all channels once", () => {
   const config = loadConfig();
-  assert.equal(config.channels.length, 34);
-  assert.equal(new Set(config.channels.map((c) => c.id)).size, 34);
-  assert.equal(new Set(config.channels.map((c) => c.invite)).size, 34);
+  assert.equal(config.channels.length, 35);
+  assert.equal(new Set(config.channels.map((c) => c.id)).size, 35);
+  assert.equal(new Set(config.channels.map((c) => c.invite)).size, 35);
   for (const c of config.channels) assert.match(c.invite, /^0029V[A-Za-z0-9]{17,}$/, `${c.id} has a malformed link`);
   const modes = new Map<string, number>();
   for (const c of config.channels) modes.set(c.mode, (modes.get(c.mode) ?? 0) + 1);
-  assert.deepEqual(Object.fromEntries(modes), { creative: 17, fandom: 13, news: 3, invasion: 1 });
+  assert.deepEqual(Object.fromEntries(modes), { creative: 17, fandom: 14, news: 3, invasion: 1 });
   // channels that promise free things only ever publish from real sources
   for (const c of config.channels.filter((c) => c.group === "brawl-free")) {
     assert.equal(c.mode, "news");

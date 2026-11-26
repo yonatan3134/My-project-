@@ -56,3 +56,36 @@ test("the bot sends its own question in the learned shape", () => {
   assert.equal(msg.questionMessage?.message?.extendedTextMessage?.text, "מה עשיתם היום? 🤔");
   assert.equal(msg.questionMessage?.message?.extendedTextMessage?.contextInfo?.isQuestion, true, "everything else is copied as it was");
 });
+
+import { fetchChannelPosts } from "../wa/channels.js";
+import { learnFromChannel } from "../wa/capture.js";
+
+/** A stand-in for the WhatsApp connection that answers only the request official clients use. */
+function fakeSock(answer: unknown) {
+  const sent: { attrs: Record<string, string>; content: { tag: string; attrs: Record<string, string> }[] }[] = [];
+  return {
+    sent,
+    sock: {
+      generateMessageTag: () => "tag1",
+      query: async (node: never) => {
+        sent.push(node);
+        return answer;
+      },
+      newsletterFetchMessages: async () => undefined, // the library's own request times out in real use
+    } as never,
+  };
+}
+
+test("channel posts are read with the request WhatsApp answers", async () => {
+  const f = fakeSock({ tag: "iq", attrs: {}, content: [{ tag: "messages", attrs: {}, content: fetched().content[0]!.content[0]!.content }] });
+  const posts = await fetchChannelPosts(f.sock, JID, 20);
+  assert.equal(posts.length, 2);
+  assert.equal(posts[0]!.views, 9);
+  assert.deepEqual(f.sent[0]!.attrs, { id: "tag1", type: "get", xmlns: "newsletter", to: "s.whatsapp.net" });
+  assert.deepEqual(f.sent[0]!.content[0], { tag: "messages", attrs: { type: "jid", jid: JID, count: "20" } });
+});
+
+test("when WhatsApp does not answer, the website gets a clear error instead of a crash", async () => {
+  const f = fakeSock(undefined);
+  await assert.rejects(learnFromChannel(f.sock, new Store(":memory:"), JID), /did not answer/);
+});
