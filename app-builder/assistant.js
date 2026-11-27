@@ -115,43 +115,6 @@ function nameFrom(raw) {
   return quoted(raw) || (raw.match(/בשם\s+([^\s,.!?]+(?:\s+[^\s,.!?]+)?)/) || [])[1] || '';
 }
 
-function clickGame(raw, t) {
-  const e = topicEmoji(t) || '🎈';
-  const secs = numberIn(raw, ['שניות', 'שניה']) || 30;
-  const bg = colorIn(t);
-  const areaColor = bg ? (LIGHT[bg] || bg) : '#f1ecff';
-  const title = nameFrom(raw) || `תפוס את ה${e}!`;
-  const speed = has(t, 'קשה', 'מהיר') ? 0.7 : has(t, 'קל', 'איטי', 'לאט') ? 1.5 : 1;
-  return {
-    reply: `בניתי משחק: ה${e} קופץ בזירה, וצריך ללחוץ עליו כמה שיותר פעמים ב-${secs} שניות. בסוף יש זיקוקים 🎉`,
-    blocks: [
-      page(title, '#1d1240', [
-        uiTitle('🎯 ' + title),
-        uiBox('row', 'none', 'לוח', [uiText('⭐ ניקוד: 0', 'ניקוד'), uiText(`⏱️ זמן: ${secs}`, 'שעון')]),
-        B('ui_area', { HEIGHT: 360, COLOR: areaColor, NAME: 'זירה' }, { CONTENT: [uiEmoji(e, 70, 'דמות')] }),
-      ]),
-      onStart([setVar('ניקוד', N(0)), setVar('זמן', N(secs))]),
-      onClick('דמות', [ifThen(cmp(getVar('זמן'), 'GT', N(0)), [
-        changeVar('ניקוד', 1),
-        setText('ניקוד', join('⭐ ניקוד: ', getVar('ניקוד'))),
-        sound('jump'),
-        B('act_jump', { NAME: 'דמות' }),
-      ])]),
-      every(speed, [B('act_jump', { NAME: 'דמות' })]),
-      every(1, [
-        changeVar('זמן', -1),
-        setText('שעון', join('⏱️ זמן: ', getVar('זמן'))),
-        ifThen(cmp(getVar('זמן'), 'EQ', N(0)), [
-          B('act_stop'),
-          sound('win'),
-          B('act_confetti'),
-          say(join('נגמר הזמן! הניקוד שלך: ', getVar('ניקוד'))),
-        ]),
-      ]),
-    ],
-  };
-}
-
 const QUIZ_BANK = {
   animals: { label: 'חיות', words: ['חיות', 'בעלי חיימ', 'חיה'], qs: [
     ['איזו חיה היא הגדולה ביותר בעולם?', 'לוויתן כחול', 'פיל', 'ג׳ירפה'],
@@ -374,20 +337,193 @@ function counter(raw, t) {
   };
 }
 
-function moveGame(raw, t) {
-  const e = topicEmoji(t) || '🚀';
+// ---------- games ----------
+const ANIMALS = [
+  ['חתול', '🐱'], ['כלב', '🐶'], ['עכבר', '🐭'], ['ארנב', '🐰'], ['קופ', '🐵'], ['דינוזאור', '🦖'], ['רובוט', '🤖'],
+  ['חד קרנ', '🦄'], ['נמר', '🐯'], ['אריה', '🦁'], ['דבורה', '🐝'], ['צפרדע', '🐸'], ['ינשופ', '🦉'], ['פינגווינ', '🐧'],
+  ['פנדה', '🐼'], ['סוס', '🐴'], ['פיל', '🐘'], ['כריש', '🦈'], ['תרנגול', '🐔'], ['ציפור', '🐦'], ['דג', '🐟'],
+  ['חללית', '🚀'], ['טיל', '🚀'], ['מכונית', '🚗'], ['מטוס', '✈️'], ['נינג\'ה', '🥷'], ['גיבור', '🦸'], ['מכשפ', '🧙'],
+  ['פרפר', '🦋'], ['רוח רפאימ', '👻'], ['שפנ', '🐇'], ['צב', '🐢'], ['תמנונ', '🐙'], ['דרקונ', '🐉'],
+].map(([w, e]) => [norm(w), e]);
+const ITEMS = [
+  [['פירות', 'פרי', 'תפוח', 'בננ', 'תות'], '🍎 🍌 🍓 🍇 🍒'],
+  [['ממתק', 'סוכרי', 'שוקולד', 'עוגיות'], '🍬 🍭 🍫 🍪'],
+  [['כוכב'], '⭐ 🌟'],
+  [['מטבע', 'כספ', 'זהב'], '🪙 💰'],
+  [['יהלומ', 'אבני חנ'], '💎'],
+  [['פיצה', 'המבורגר', 'אוכל'], '🍕 🍔 🌭 🍟'],
+  [['כדור'], '⚽ 🏀 🎾'],
+  [['בלונ'], '🎈'],
+  [['לב'], '❤️ 💖'],
+  [['גלידה'], '🍦'],
+  [['עצמ', 'עצמות'], '🦴'],
+  [['גבינה'], '🧀'],
+  [['גזר'], '🥕'],
+].map(([ws, e]) => [ws.map(norm), e]);
+const THEME_NAMES = { space: 'חלל 🌌', sea: 'ים 🌊', sky: 'שמיים ☁️', grass: 'דשא 🌳', night: 'לילה 🌙', desert: 'מדבר 🏜️', candy: 'ממתקים 🍭' };
+const THEME_WORDS = [
+  ['חלל', 'space'], ['כוכבי לכת', 'space'], ['ימ', 'sea'], ['מימ', 'sea'], ['אוקיינוס', 'sea'], ['מתחת למימ', 'sea'],
+  ['שמיימ', 'sky'], ['עננימ', 'sky'], ['דשא', 'grass'], ['יער', 'grass'], ['שדה', 'grass'], ['לילה', 'night'], ['חושכ', 'night'],
+  ['מדבר', 'desert'], ['חול', 'desert'], ['ממתקימ', 'candy'], ['סוכריות', 'candy'],
+].map(([w, th]) => [norm(w), th]);
+
+// Words with a one-letter Hebrew prefix (ה, ב, ל, ו, מ, ש, כ) removed, so "בחלל" matches "חלל".
+function tokens(t) {
+  const out = new Set();
+  for (const w of t.split(/[\s,.!?]+/).filter(Boolean)) {
+    out.add(w);
+    if (w.length > 2 && 'הבלומשכ'.includes(w[0])) out.add(w.slice(1));
+    if (w.length > 3 && 'הבלומשכ'.includes(w[0]) && 'הבלומשכ'.includes(w[1])) out.add(w.slice(2));
+  }
+  return out;
+}
+function themeIn(t) {
+  const tk = tokens(t);
+  for (const [w, th] of THEME_WORDS) if (w.includes(' ') ? t.includes(w) : tk.has(w)) return th;
+  return null;
+}
+function animalIn(t) {
+  const hit = ANIMALS.find(([w]) => t.includes(w));
+  return hit ? hit[1] : null;
+}
+function itemsIn(t) {
+  const hit = ITEMS.find(([ws]) => ws.some(w => t.includes(w)));
+  return hit ? hit[1] : null;
+}
+
+const sp = (emoji, nm, size, x, y, show = true) => B('game_sprite', { EMOJI: emoji, NAME: nm, SIZE: size, X: x, Y: y, SHOW: show ? 'yes' : 'no' });
+const gpage = (title, theme, sprites, h = 440) => page(title, '#1d1240', [
+  uiTitle(title),
+  B('ui_stage', { THEME: theme, HEIGHT: h, NAME: 'במה' }, { SPRITES: sprites }),
+]);
+const touch = (a, b2, list) => B('ev_touch', { A: a, B: b2 }, { DO: list });
+const gv = (nm, dir, speed) => B('game_velocity', { NAME: nm, DIR: dir, SPEED: speed });
+const spawnEvery = (sec, nm, where) => every(sec, [B('game_spawn', { NAME: nm, WHERE: where })]);
+const lose1 = () => [B('game_effect', { KIND: 'boom', WHO: 'other' }), B('game_remove', { WHO: 'other' }), B('game_lives', { NUM: -1 })];
+const collect = (n = 1) => [B('game_effect', { KIND: 'sparkle', WHO: 'other' }), B('game_remove', { WHO: 'other' }), B('game_score', { NUM: n })];
+const winAt = (n) => ifThen(cmp(B('val_score'), 'GTE', N(n)), [B('game_over', { RESULT: 'win' })]);
+const lives = (n) => B('game_set_lives', { NUM: n });
+const timer = (sec) => B('game_timer', { SEC: sec, RESULT: 'win' });
+const gameTitle = (raw, fallback) => nameFrom(raw) || fallback;
+const GAME_TIP = '\n\n💡 אפשר לבקש: "יותר מהר", "5 חיים", "רקע חלל", "תחליף לכלב", "60 שניות"';
+
+function catchGame(raw, t) {
+  const player = animalIn(t) || '🧺';
+  const items = itemsIn(t) || '🍎 🍌 🍓 🍇 🍒';
+  const theme = themeIn(t) || 'sky';
+  const first = items.split(' ')[0];
   return {
-    reply: `בניתי משחק תנועה: מזיזים את ה${e} עם החצים במקלדת או עם הכפתורים 🎮`,
+    reply: `בניתי משחק תפיסה: ${first} נופלים מלמעלה, זזים עם החצים ותופסים אותם עם ה${player}. נזהרים מה💣! מי שמגיע ל-20 נקודות מנצח.` + GAME_TIP,
     blocks: [
-      page('משחק תנועה', '#1d1240', [
-        uiTitle(`🎮 הזיזו את ה${e}`),
-        B('ui_area', { HEIGHT: 340, COLOR: '#e8f4ff', NAME: 'זירה' }, { CONTENT: [uiEmoji(e, 60, 'דמות')] }),
-        uiBox('row', 'none', 'חצים', [uiButton('⬅️', 'שמאלה'), uiButton('⬆️', 'למעלה'), uiButton('⬇️', 'למטה'), uiButton('➡️', 'ימינה')]),
+      gpage(gameTitle(raw, `תפוס את ה${first}!`), theme, [sp(player, 'שחקן', 70, 50, 90), sp(items, 'פרס', 46, 50, 0, false), sp('💣', 'פצצה', 46, 50, 0, false)]),
+      onStart([B('game_controls', { NAME: 'שחקן', MODE: 'lr', SPEED: 75 }), gv('פרס', 'down', 35), gv('פצצה', 'down', 45), lives(3)]),
+      spawnEvery(0.9, 'פרס', 'top'),
+      spawnEvery(2.2, 'פצצה', 'top'),
+      touch('שחקן', 'פרס', [...collect(), winAt(20)]),
+      touch('שחקן', 'פצצה', lose1()),
+    ],
+  };
+}
+
+function dodgeGame(raw, t) {
+  const theme = themeIn(t) || 'space';
+  const player = animalIn(t) || (theme === 'space' ? '🚀' : '🙂');
+  const rocks = itemsIn(t) || (theme === 'space' ? '☄️ 🪨 🌑' : theme === 'sea' ? '🦈 🐙' : '⚽ 🏀 🪨');
+  return {
+    reply: `בניתי משחק התחמקות: דברים נופלים, ומזיזים את ה${player} עם החצים כדי לא להיפגע. שורדים 30 שניות ומנצחים!` + GAME_TIP,
+    blocks: [
+      gpage(gameTitle(raw, 'אל תיפגע!'), theme, [sp(player, 'שחקן', 60, 50, 88), sp(rocks, 'אויב', 50, 50, 0, false)]),
+      onStart([B('game_controls', { NAME: 'שחקן', MODE: 'lr', SPEED: 85 }), gv('אויב', 'down', 50), lives(3), timer(30)]),
+      spawnEvery(0.5, 'אויב', 'top'),
+      every(1, [B('game_score', { NUM: 1 })]),
+      touch('שחקן', 'אויב', lose1()),
+    ],
+  };
+}
+
+function runnerGame(raw, t) {
+  const theme = themeIn(t) === 'desert' ? 'desert' : 'grass';
+  const player = animalIn(t) || '🦖';
+  const obstacles = theme === 'desert' ? '🌵 🪨' : '🌵 🪨 🍄';
+  return {
+    reply: `בניתי משחק ריצה: ה${player} רץ, ומכשולים מגיעים מולו. קופצים ברווח או בלחיצה על המסך, ואוספים 🪙. מחזיקים 40 שניות ומנצחים!` + GAME_TIP,
+    blocks: [
+      gpage(gameTitle(raw, 'קפוץ מעל המכשולים!'), theme, [sp(player, 'שחקן', 60, 80, 70), sp(obstacles, 'מכשול', 48, 0, 0, false), sp('🪙', 'מטבע', 34, 0, 0, false)]),
+      onStart([B('game_gravity', { NAME: 'שחקן', STRENGTH: 7 }), B('game_jump', { NAME: 'שחקן', POWER: 11, AIR: 'ground' }), gv('מכשול', 'right', 45), gv('מטבע', 'right', 45), lives(3), timer(40)]),
+      spawnEvery(1.7, 'מכשול', 'ground_left'),
+      spawnEvery(2.5, 'מטבע', 'left'),
+      touch('שחקן', 'מכשול', lose1()),
+      touch('שחקן', 'מטבע', collect()),
+    ],
+  };
+}
+
+function flappyGame(raw, t) {
+  const theme = themeIn(t) || 'sky';
+  const player = animalIn(t) || '🐦';
+  return {
+    reply: `בניתי משחק מעופף: לוחצים (או רווח) כדי שה${player} יעוף למעלה, ונזהרים מהמכשולים. אוספים ⭐ ומחזיקים 45 שניות!` + GAME_TIP,
+    blocks: [
+      gpage(gameTitle(raw, 'עוף רחוק!'), theme, [sp(player, 'שחקן', 55, 75, 40), sp('🧱 🌵 🪨', 'מכשול', 60, 0, 0, false), sp('⭐', 'כוכב', 34, 0, 0, false)]),
+      onStart([B('game_gravity', { NAME: 'שחקן', STRENGTH: 4 }), B('game_jump', { NAME: 'שחקן', POWER: 6, AIR: 'air' }), gv('מכשול', 'right', 40), gv('כוכב', 'right', 40), lives(3), timer(45)]),
+      spawnEvery(1.4, 'מכשול', 'left'),
+      spawnEvery(2, 'כוכב', 'left'),
+      touch('שחקן', 'מכשול', lose1()),
+      touch('שחקן', 'כוכב', collect()),
+    ],
+  };
+}
+
+function shooterGame(raw, t) {
+  const theme = themeIn(t) || 'space';
+  const player = animalIn(t) || '🚀';
+  const enemies = theme === 'sea' ? '🦈 🐙 🦑' : '👾 👽 🛸';
+  return {
+    reply: `בניתי משחק יריות: זזים עם החצים, יורים ברווח או בלחיצה על המסך, ופוגעים ב${enemies.split(' ')[0]}. 25 פגיעות = ניצחון!` + GAME_TIP,
+    blocks: [
+      gpage(gameTitle(raw, 'הגנה על כדור הארץ!'), theme, [sp(player, 'שחקן', 60, 50, 90), sp('🔸', 'קליע', 24, 0, 0, false), sp(enemies, 'אויב', 50, 0, 0, false)]),
+      onStart([B('game_controls', { NAME: 'שחקן', MODE: 'lr', SPEED: 80 }), gv('אויב', 'down', 25), lives(3)]),
+      spawnEvery(1.1, 'אויב', 'top'),
+      B('ev_key', { KEY: ' ' }, { DO: [B('game_shoot', { NAME: 'שחקן', BULLET: 'קליע', DIR: 'up' })] }),
+      onClick('במה', [B('game_shoot', { NAME: 'שחקן', BULLET: 'קליע', DIR: 'up' })]),
+      touch('קליע', 'אויב', [B('game_effect', { KIND: 'boom', WHO: 'other' }), B('game_remove', { WHO: 'other' }), B('game_remove', { WHO: 'me' }), B('game_score', { NUM: 1 }), winAt(25)]),
+      touch('שחקן', 'אויב', lose1()),
+    ],
+  };
+}
+
+function collectGame(raw, t) {
+  const theme = themeIn(t) || 'night';
+  const player = animalIn(t) || '🐭';
+  const chaser = player === '🐭' ? '🐱' : player === '🐱' ? '🐶' : '👻';
+  const loot = itemsIn(t) || '🪙 💎 ⭐';
+  return {
+    reply: `בניתי משחק אוצרות: מזיזים את ה${player} עם החצים לכל הכיוונים, אוספים ${loot.split(' ')[0]} ובורחים מה${chaser} שרודף אחריך! מחזיקים 45 שניות.` + GAME_TIP,
+    blocks: [
+      gpage(gameTitle(raw, 'אסוף ותברח!'), theme, [sp(player, 'שחקן', 55, 50, 55), sp(loot, 'אוצר', 36, 0, 0, false), sp(chaser, 'רודף', 55, 10, 15)]),
+      onStart([
+        B('game_controls', { NAME: 'שחקן', MODE: 'all', SPEED: 55 }), B('game_chase', { NAME: 'רודף', TARGET: 'שחקן', SPEED: 18 }),
+        lives(3), timer(45),
+        B('game_spawn', { NAME: 'אוצר', WHERE: 'random' }), B('game_spawn', { NAME: 'אוצר', WHERE: 'random' }), B('game_spawn', { NAME: 'אוצר', WHERE: 'random' }),
       ]),
-      ...[['right', 'ArrowRight', 'ימינה'], ['left', 'ArrowLeft', 'שמאלה'], ['up', 'ArrowUp', 'למעלה'], ['down', 'ArrowDown', 'למטה']].flatMap(([dir, key, nm]) => [
-        B('ev_key', { KEY: key }, { DO: [B('act_move', { NAME: 'דמות', DIR: dir, STEPS: 3 })] }),
-        onClick(nm, [B('act_move', { NAME: 'דמות', DIR: dir, STEPS: 3 })]),
-      ]),
+      spawnEvery(2, 'אוצר', 'random'),
+      touch('שחקן', 'אוצר', collect()),
+      touch('שחקן', 'רודף', [B('game_effect', { KIND: 'boom', WHO: 'me' }), B('game_lives', { NUM: -1 }), B('game_teleport', { NAME: 'רודף' })]),
+    ],
+  };
+}
+
+function clickGame(raw, t) {
+  const e = topicEmoji(t) || '🎈';
+  const theme = themeIn(t) || 'sky';
+  const secs = numberIn(raw, ['שניות', 'שניה']) || 30;
+  return {
+    reply: `בניתי משחק לחיצות: ה${e} מתעופף במסך, וצריך ללחוץ עליו כמה שיותר פעמים ב-${secs} שניות.\n\nרוצה סוג אחר? נסה: "משחק שתופסים פירות שנופלים", "משחק ריצה וקפיצה", "משחק יריות בחלל", "משחק ציפור מעופפת", "משחק לאסוף מטבעות ולברוח"` + GAME_TIP,
+    blocks: [
+      gpage(gameTitle(raw, `תפוס את ה${e}!`), theme, [sp(e, 'דמות', 70, 50, 50)]),
+      onStart([gv('דמות', 'right', 35), B('game_edges', { NAME: 'דמות', MODE: 'bounce' }), B('game_timer', { SEC: secs, RESULT: 'win' })]),
+      every(1.2, [B('game_teleport', { NAME: 'דמות' })]),
+      onClick('דמות', [B('game_effect', { KIND: 'sparkle', WHO: 'me' }), B('game_score', { NUM: 1 }), B('game_teleport', { NAME: 'דמות' })]),
     ],
   };
 }
@@ -399,11 +535,16 @@ const RECIPES = [
   { words: ['שעונ עצר', 'סטופר', 'טיימר', 'ספירה לאחור'], make: stopwatch },
   { words: ['מחשבונ'], make: calculator },
   { words: ['קוביה', 'הגרל', 'מספר אקראי', 'מזל'], make: dice },
-  { words: ['חצימ', 'להזיז', 'תנועה', 'מקלדת'], make: moveGame },
+  { words: ['לירות', 'יורה', 'יריות', 'פולשימ', 'חייזרימ', 'מלחמת'], make: shooterGame },
+  { words: ['לעופ', 'מעופפ', 'ציפור', 'כנפ'], make: flappyGame },
+  { words: ['ריצה', 'לרוצ', 'רצה ', 'לקפוצ', 'קופצ', 'קפיצות', 'מכשול', 'דינוזאור'], make: runnerGame },
+  { words: ['נופל', 'לתפוס', 'לתפוש', 'סל ', 'גשמ של'], make: catchGame },
+  { words: ['להתחמק', 'מתחמק', 'התחמקות', 'אסטרואיד', 'מטאור', 'לא לגעת', 'לברוח מ'], make: dodgeGame },
+  { words: ['לאסופ', 'לאסוף', 'אוספ', 'אוצר', 'מטבעות', 'רודפ', 'בורח', 'מבוכ', 'מרדפ', 'עמ חצימ', 'בחצימ', 'החצימ', 'חיצימ', 'להזיז', 'מקלדת', 'תנועה'], make: collectGame },
   { words: ['מונה', 'לייק', 'ספירה', 'לספור'], make: counter },
   { words: ['אתר', 'עסק', 'מסעדה', 'חנות', 'תיק עבודות', 'דפ נחיתה', 'פורטפוליו'], make: website },
   { words: ['היכרות', 'ברכה', 'להגיד שלומ', 'שמ שלי'], make: greeting },
-  { words: ['משחק', 'לתפוס', 'תפוס', 'ללחוצ'], make: clickGame },
+  { words: ['משחק', 'תפוס', 'ללחוצ', 'לחיצות'], make: clickGame },
 ];
 
 // ---------- edits on an existing project ----------
@@ -507,11 +648,40 @@ function applyEdits(raw, t, ws) {
     }
   }
 
+  // ----- games -----
+  const stage = blocks.find(b => b.type === 'ui_stage');
+  const sprites = blocks.filter(b => b.type === 'game_sprite');
+  const player = sprites.find(b => b.fields.NAME === 'שחקן') || sprites.find(b => b.fields.SHOW === 'yes');
+  const theme = themeIn(t);
+  if (stage && theme && stage.fields.THEME !== theme) {
+    stage.fields.THEME = theme;
+    done.push(`שיניתי את עיצוב המשחק ל${THEME_NAMES[theme]}`);
+  }
+  const lifeCount = numberIn(raw, ['חיימ', 'חיים', 'לבבות']);
+  const lifeBlocks = blocks.filter(b => b.type === 'game_set_lives');
+  if (lifeCount && lifeBlocks.length) { lifeBlocks.forEach(b => { b.fields.NUM = lifeCount; }); done.push(`עכשיו יש ${lifeCount} חיים ❤️`); }
+  const gameFaster = has(t, 'מהר', 'קשה יותר', 'יותר קשה');
+  const gameSlower = has(t, 'לאט', 'קל יותר', 'יותר קל');
+  if (stage && (gameFaster || gameSlower)) {
+    const k = gameFaster ? 1.3 : 0.75;
+    blocks.filter(b => b.type === 'game_velocity' && b.fields.NAME !== 'שחקן').forEach(b => { b.fields.SPEED = Math.round(b.fields.SPEED * k); });
+    blocks.filter(b => b.type === 'ev_every' && b.inputs?.DO?.block?.type === 'game_spawn').forEach(b => { b.fields.SEC = Math.max(0.2, +(b.fields.SEC / k).toFixed(2)); });
+    blocks.filter(b => b.type === 'game_chase').forEach(b => { b.fields.SPEED = Math.round(b.fields.SPEED * k); });
+    done.push(gameFaster ? 'עכשיו המשחק מהיר וקשה יותר ⚡' : 'עכשיו המשחק איטי וקל יותר 🐢');
+  }
+
   const emojis = blocks.filter(b => b.type === 'ui_emoji' && /\p{Extended_Pictographic}/u.test(b.fields.TEXT));
   const newEmoji = topicEmoji(t);
-  if (newEmoji && emojis.length && has(t, 'במקומ', 'תחליפ', 'תשנה', 'תהפוכ', 'שיהיה', 'יהיה')) {
+  const replacing = has(t, 'במקומ', 'תחליפ', 'תשנה', 'תהפוכ', 'שיהיה', 'יהיה');
+  if (newEmoji && player && replacing) {
+    player.fields.EMOJI = newEmoji;
+    done.push(`עכשיו השחקן הוא ${newEmoji}`);
+  } else if (newEmoji && emojis.length && replacing) {
     emojis[0].fields.TEXT = newEmoji;
     done.push(`החלפתי את הדמות ל-${newEmoji}`);
+  } else if (newEmoji && stage && adding && !has(t, 'כפתור', 'כרטיס')) {
+    appendTo(stage, 'SPRITES', sp(newEmoji, uniqueName(ws, 'דמות'), 60, Math.round(15 + Math.random() * 70), 40));
+    done.push(`הוספתי ${newEmoji} למשחק`);
   } else if (newEmoji && pg && adding && !has(t, 'כפתור', 'כרטיס')) {
     const area = blocks.find(b => b.type === 'ui_area');
     const e = uiEmoji(newEmoji, 70, uniqueName(ws, 'דמות'));
@@ -519,14 +689,17 @@ function applyEdits(raw, t, ws) {
     done.push(`הוספתי ${newEmoji}`);
   }
 
-  if (emojis.length && has(t, 'תגדיל', 'יותר גדול', 'גדול יותר', 'ענק')) { emojis.forEach(b => { b.fields.SIZE = Math.round(b.fields.SIZE * 1.5); }); done.push('הגדלתי 🔍'); }
-  if (emojis.length && has(t, 'תקטינ', 'יותר קטנ', 'קטנ יותר')) { emojis.forEach(b => { b.fields.SIZE = Math.max(20, Math.round(b.fields.SIZE / 1.5)); }); done.push('הקטנתי 🔎'); }
+  const sized = [...emojis, ...sprites];
+  if (sized.length && has(t, 'תגדיל', 'יותר גדול', 'גדול יותר', 'ענק')) { sized.forEach(b => { b.fields.SIZE = Math.round(b.fields.SIZE * 1.4); }); done.push('הגדלתי 🔍'); }
+  if (sized.length && has(t, 'תקטינ', 'יותר קטנ', 'קטנ יותר')) { sized.forEach(b => { b.fields.SIZE = Math.max(16, Math.round(b.fields.SIZE / 1.4)); }); done.push('הקטנתי 🔎'); }
 
   const movers = blocks.filter(b => b.type === 'ev_every' && b.inputs?.DO?.block?.type === 'act_jump');
   if (movers.length && has(t, 'מהר', 'קשה יותר', 'יותר קשה')) { movers.forEach(b => { b.fields.SEC = Math.max(0.3, +(b.fields.SEC * 0.65).toFixed(2)); }); done.push('עכשיו זה מהיר יותר ⚡'); }
   if (movers.length && has(t, 'לאט', 'קל יותר', 'יותר קל')) { movers.forEach(b => { b.fields.SEC = +(b.fields.SEC * 1.5).toFixed(2); }); done.push('עכשיו זה איטי יותר 🐢'); }
 
   const secs = numberIn(raw, ['שניות', 'שניה']);
+  const timers = blocks.filter(b => b.type === 'game_timer');
+  if (secs && timers.length) { timers.forEach(b => { b.fields.SEC = secs; }); done.push(`המשחק נמשך עכשיו ${secs} שניות ⏱️`); }
   if (secs) {
     const timeVarId = (ws.variables || []).find(x => x.name === 'זמן' || x.name === 'שניות')?.id;
     const setters = blocks.filter(b => b.type === 'variables_set' && b.fields.VAR.id === timeVarId && b.inputs?.VALUE?.block?.type === 'math_number');
@@ -558,16 +731,19 @@ function applyEdits(raw, t, ws) {
 }
 
 // ---------- entry point ----------
-export const HELP = `אני יכול לבנות:
-🎯 משחק לחיצות (למשל "משחק שתופסים בו חתולים")
-🎮 משחק תנועה עם חצים
-❓ חידון (חיות, ישראל, חלל, חשבון)
-📝 רשימת משימות או קניות
-🌐 אתר (מסעדה, חנות, צלם, מספרה, קבוצה...)
-⏱️ שעון עצר או טיימר
-🎲 קוביה או הגרלה, 🧮 מחשבון, ❤️ מונה לייקים, 👋 אפליקציית היכרות, 🧠 משחק זיכרון
+export const HELP = `אני יכול לבנות משחקים:
+🧺 תפיסה: "משחק שתופסים פירות שנופלים"
+☄️ התחמקות: "משחק להתחמק מאסטרואידים"
+🦖 ריצה וקפיצה: "משחק ריצה עם דינוזאור"
+🐦 מעופף: "משחק ציפור שעפה"
+🚀 יריות: "משחק יריות בחלל"
+🐭 אוצרות ומרדף: "משחק לאסוף מטבעות ולברוח"
+🎈 לחיצות: "משחק שלוחצים על בלונים"
+🧠 משחק זיכרון, ❓ חידון (חיות, ישראל, חלל, חשבון)
 
-ואז אפשר לבקש שינויים: "רקע כחול", "תוסיף כפתור 'שלום'", "תחליף לכלב", "יותר מהר", "60 שניות", "תוסיף זיקוקים", "כותרת: המשחק שלי"`;
+וגם: 🌐 אתר (מסעדה, חנות, צלם...), 📝 רשימת משימות, ⏱️ טיימר, 🎲 קוביה, 🧮 מחשבון, ❤️ מונה, 👋 היכרות
+
+ואז אפשר לבקש שינויים: "יותר מהר", "5 חיים", "רקע חלל", "תחליף לכלב", "60 שניות", "תגדיל", "כותרת: המשחק שלי"`;
 
 /**
  * @param {string} raw  what the user wrote
@@ -581,8 +757,9 @@ export function assist(raw, current) {
   if (t === norm('עזרה') || has(t, 'מה אתה יודע', 'מה אפשר', 'מה אתה יכול')) return { reply: HELP };
 
   const empty = !current || !(current.blocks?.blocks || []).length;
-  const wantsNew = empty || has(t, 'חדש', 'תבנה', 'בנה', 'תעשה לי', 'צור', 'תכינ', 'אני רוצה', 'רוצה ');
   const recipe = RECIPES.find(r => r.words.some(w => t.includes(norm(w))));
+  const editWords = has(t, 'תוסיפ', 'תשנה', 'שנה ', 'תחליפ', 'יותר', 'רקע', 'תגדיל', 'תקטינ', 'במקומ', 'שיהיה', 'תוריד', 'תמחק', 'כותרת', 'שאלה:');
+  const wantsNew = empty || has(t, 'חדש', 'תבנה', 'בנה', 'תעשה לי', 'צור', 'תכינ', 'אני רוצה', 'רוצה ') || (recipe && !editWords);
 
   // Edits first when there's a project and the request isn't clearly "build something new".
   if (!empty && !(wantsNew && recipe && !has(t, 'תוסיפ', 'תשנה', 'תחליפ'))) {
