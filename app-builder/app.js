@@ -281,7 +281,10 @@ function progressBubble() {
 
 function showProgress(bubble, p) {
   const lines = p.html ? p.html.split('\n').length : 0;
-  bubble.querySelector('.ai-status').textContent = p.phase === 'writing' && lines ? `${PHASES.writing}... ${lines} שורות` : (PHASES[p.phase] || PHASES.thinking);
+  const who = { claude: 'Claude', gemini: 'Gemini', pollinations: 'Pollinations' }[p.provider];
+  bubble.querySelector('.ai-status').textContent = p.phase === 'writing' && lines
+    ? `${PHASES.writing}${who ? ' (' + who + ')' : ''}... ${lines} שורות`
+    : (PHASES[p.phase] || PHASES.thinking);
   bubble.querySelector('.ai-message').textContent = p.message;
   const box = bubble.querySelector('.ai-images');
   for (const [id, img] of Object.entries(p.images)) {

@@ -1,14 +1,14 @@
 // Supabase Edge Function "ai": the app builder's AI.
-//   action "code"  – Claude writes (or changes) a complete HTML app or game, streamed back as server-sent events.
+//   action "code"  – an AI writes (or changes) a complete HTML app or game, streamed back as server-sent events.
+//                    Claude if ANTHROPIC_API_KEY is set, else Gemini (free tier) if GEMINI_API_KEY is set, else Pollinations (free).
 //   action "image" – draws one picture for the game (Gemini → Cloudflare → Pollinations).
-// Keys live in the function's secrets (never in the browser):
-//   ANTHROPIC_API_KEY (required for "code")
-//   GEMINI_API_KEY, CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN, POLLINATIONS_TOKEN (all optional for "image")
+// Keys live in the function's secrets (never in the browser), all optional:
+//   ANTHROPIC_API_KEY, GEMINI_API_KEY, CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN, POLLINATIONS_TOKEN
 // Optional limits per user per day: AI_DAILY_BUILDS (default 10), AI_DAILY_IMAGES (default 40).
 import Anthropic from "npm:@anthropic-ai/sdk@1.6.0";
 import { createClient } from "npm:@supabase/supabase-js@2.119.0";
 
-const MODEL = "claude-opus-5-5";
+const CLAUDE_MODEL = "claude-opus-5-5";
 const DAILY_BUILDS = Number(Deno.env.get("AI_DAILY_BUILDS") ?? 10);
 const DAILY_IMAGES = Number(Deno.env.get("AI_DAILY_IMAGES") ?? 40);
 
@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
   // Who is asking: the user's own session token, checked with Supabase Auth.
   const authHeader = req.headers.get("Authorization") ?? "";
   const apikey = req.headers.get("apikey") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  if (!/^Bearer\s+\S+/i.test(authHeader) || !apikey) return json(401, { error: "login", message: "צריך להתחבר כדי להשתמש ב-AI" });
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, apikey, { global: { headers: { Authorization: authHeader } } });
   const { data: userData } = await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i, ""));
   if (!userData?.user) return json(401, { error: "login", message: "צריך להתחבר כדי להשתמש ב-AI" });
@@ -83,7 +84,7 @@ Deno.serve(async (req) => {
   }
 });
 
-// ---------- code: Claude, streamed ----------
+// ---------- code: streamed from the first AI that answers ----------
 function userMessage(body: Record<string, unknown>): string {
   const prompt = String(body.prompt ?? "").slice(0, 4000);
   const code = typeof body.code === "string" ? body.code.slice(0, 200_000) : "";
@@ -105,9 +106,19 @@ function userMessage(body: Record<string, unknown>): string {
   return parts.join("\n\n");
 }
 
+type Emit = (text: string) => void;
+type CodeProvider = { name: string; ready: () => boolean; run: (msg: string, emit: Emit, signal: AbortSignal) => Promise<string> };
+
+// Tried in order. The first one that answers writes the code; if one fails before writing anything, the next one tries.
+const CODE_PROVIDERS: CodeProvider[] = [
+  { name: "claude", ready: () => !!Deno.env.get("ANTHROPIC_API_KEY"), run: viaClaude },
+  { name: "gemini", ready: () => !!Deno.env.get("GEMINI_API_KEY"), run: viaGeminiText },
+  { name: "pollinations", ready: () => true, run: viaPollinationsText },
+];
+
 function streamCode(req: Request, body: Record<string, unknown>): Response {
-  const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
   const enc = new TextEncoder();
+  const msg = userMessage(body);
   let ping: number | undefined;
 
   const stream = new ReadableStream({
@@ -115,28 +126,28 @@ function streamCode(req: Request, body: Record<string, unknown>): Response {
       const send = (obj: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
       // Thinking can take a while before the first text; keep the connection alive meanwhile.
       ping = setInterval(() => controller.enqueue(enc.encode(": ping\n\n")), 5000);
-      const claude = client.beta.messages.stream({
-        model: MODEL,
-        max_tokens: 64000,
-        thinking: { type: "adaptive" },
-        output_config: { effort: "medium" },
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
-        system: SYSTEM,
-        messages: [{ role: "user", content: userMessage(body) }],
-      });
-      req.signal.addEventListener("abort", () => claude.abort());
+      const errors: string[] = [];
       try {
         send({ t: "status", v: "thinking" });
-        for await (const event of claude) {
-          if (event.type === "content_block_start" && event.content_block.type === "text") send({ t: "status", v: "writing" });
-          if (event.type === "content_block_delta" && event.delta.type === "text_delta") send({ t: "text", v: event.delta.text });
+        for (const p of CODE_PROVIDERS) {
+          if (!p.ready() || req.signal.aborted) continue;
+          let wrote = false;
+          try {
+            const stop = await p.run(msg, (text) => {
+              if (!wrote) { wrote = true; send({ t: "status", v: "writing", provider: p.name }); }
+              send({ t: "text", v: text });
+            }, req.signal);
+            send({ t: "done", stop, provider: p.name });
+            return;
+          } catch (err) {
+            const why = (err as Error).message.slice(0, 200);
+            console.error(`code via ${p.name} failed: ${why}`);
+            // Part of the answer already went out: stop here, the browser asks to continue from it.
+            if (wrote) { send({ t: "done", stop: "cut", provider: p.name }); return; }
+            errors.push(`${p.name}: ${why}`);
+          }
         }
-        const final = await claude.finalMessage();
-        if (final.stop_reason === "refusal") send({ t: "error", v: "ה-AI לא יכול לבנות את זה. נסה לנסח את הבקשה אחרת 🙏" });
-        else send({ t: "done", stop: final.stop_reason });
-      } catch (err) {
-        if (!req.signal.aborted) send({ t: "error", v: claudeError(err) });
+        if (!req.signal.aborted) send({ t: "error", v: "אף שירות AI לא ענה כרגע. נסה שוב עוד דקה (" + errors.join(" | ") + ")" });
       } finally {
         clearInterval(ping);
         try { controller.close(); } catch { /* already closed */ }
@@ -149,13 +160,153 @@ function streamCode(req: Request, body: Record<string, unknown>): Response {
   return new Response(stream, { headers: { ...CORS, "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
 }
 
+/** Reads a server-sent-events body and hands each "data:" payload to onData. */
+async function readSSE(res: Response, onData: (data: string) => void) {
+  const reader = res.body!.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.search(/\r?\n\r?\n/)) >= 0) {
+      const chunk = buf.slice(0, i);
+      buf = buf.slice(i).replace(/^\r?\n\r?\n/, "");
+      const data = chunk.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("\n");
+      if (data) onData(data);
+    }
+  }
+}
+
+// ----- Claude (paid; used only when ANTHROPIC_API_KEY is set) -----
+async function viaClaude(msg: string, emit: Emit, signal: AbortSignal): Promise<string> {
+  const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
+  const claude = client.beta.messages.stream({
+    model: CLAUDE_MODEL,
+    max_tokens: 64000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "medium" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    system: SYSTEM,
+    messages: [{ role: "user", content: msg }],
+  });
+  signal.addEventListener("abort", () => claude.abort());
+  try {
+    for await (const event of claude) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") emit(event.delta.text);
+    }
+    const final = await claude.finalMessage();
+    if (final.stop_reason === "refusal") throw new Error("declined the request");
+    return final.stop_reason ?? "end_turn";
+  } catch (err) {
+    throw new Error(claudeError(err));
+  }
+}
+
 function claudeError(err: unknown): string {
-  if (err instanceof Anthropic.AuthenticationError) return "מפתח ה-AI בשרת לא תקין (ANTHROPIC_API_KEY)";
-  if (err instanceof Anthropic.PermissionDeniedError) return "למפתח ה-AI אין הרשאה למודל הזה";
-  if (err instanceof Anthropic.RateLimitError) return "ה-AI עמוס כרגע. נסה שוב עוד דקה";
-  if (err instanceof Anthropic.APIConnectionError) return "אין חיבור ל-AI. נסה שוב";
-  if (err instanceof Anthropic.APIError) return `שגיאה מה-AI (${err.status ?? "?"}): ${err.message}`;
-  return "משהו השתבש: " + (err as Error).message;
+  if (err instanceof Anthropic.AuthenticationError) return "bad ANTHROPIC_API_KEY";
+  if (err instanceof Anthropic.PermissionDeniedError) return "no access to the model";
+  if (err instanceof Anthropic.RateLimitError) return "rate limited";
+  if (err instanceof Anthropic.APIConnectionError) return "no connection";
+  if (err instanceof Anthropic.APIError) return `API error ${err.status ?? "?"}: ${err.message}`;
+  return (err as Error).message;
+}
+
+// ----- Gemini (free tier with the key from Google AI Studio) -----
+const GEMINI = "https://generativelanguage.googleapis.com/v1beta";
+let geminiList: { at: number; models: { name: string; methods: string[] }[] } | null = null;
+
+async function geminiModels(): Promise<{ name: string; methods: string[] }[]> {
+  if (!geminiList || Date.now() - geminiList.at > 6 * 3600_000) {
+    // Model names change often, so ask Google which ones this key can use.
+    const res = await fetch(`${GEMINI}/models?pageSize=200&key=${Deno.env.get("GEMINI_API_KEY")}`, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) throw new Error(`list HTTP ${res.status}`);
+    const out = (await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
+    geminiList = { at: Date.now(), models: (out.models ?? []).map((m) => ({ name: m.name.replace(/^models\//, ""), methods: m.supportedGenerationMethods ?? [] })) };
+  }
+  return geminiList.models;
+}
+
+/** The best text model of each kind (pro, then flash, then flash-lite), newest stable version first. */
+async function geminiTextModels(): Promise<string[]> {
+  const version = (n: string) => Number((n.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] ?? 0);
+  const tier = (n: string) => (/lite/.test(n) ? 2 : /flash/.test(n) ? 1 : /pro/.test(n) ? 0 : 3);
+  const usable = (await geminiModels())
+    .filter((m) => /^gemini-/.test(m.name) && m.methods.includes("generateContent"))
+    .filter((m) => !/image|tts|audio|embed|live|vision|robotics|computer|native|thinking-exp|learnlm|nano/i.test(m.name))
+    .map((m) => m.name)
+    .sort((a, b) => tier(a) - tier(b) || version(b) - version(a) || Number(/preview|exp/.test(a)) - Number(/preview|exp/.test(b)) || a.length - b.length);
+  const best: string[] = [];
+  for (const t of [0, 1, 2]) {
+    const pick = usable.filter((n) => tier(n) === t).slice(0, t === 1 ? 2 : 1);
+    best.push(...pick);
+  }
+  return best;
+}
+
+async function viaGeminiText(msg: string, emit: Emit, signal: AbortSignal): Promise<string> {
+  const key = Deno.env.get("GEMINI_API_KEY");
+  const models = await geminiTextModels();
+  if (!models.length) throw new Error("no text model for this key");
+  let last = "";
+  for (const model of models) {
+    const res = await fetch(`${GEMINI}/models/${model}:streamGenerateContent?alt=sse&key=${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [{ role: "user", parts: [{ text: msg }] }],
+        generationConfig: { maxOutputTokens: 65536 },
+      }),
+      signal,
+    });
+    if (!res.ok) {
+      // busy, over the free allowance, or not open to this key: try the next model
+      last = `${model} HTTP ${res.status}`;
+      if ([429, 403, 404, 500, 503].includes(res.status)) continue;
+      throw new Error(last);
+    }
+    let stop = "end_turn";
+    let wrote = false;
+    await readSSE(res, (data) => {
+      const out = JSON.parse(data) as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[]; error?: { message?: string } };
+      if (out.error) throw new Error(out.error.message ?? "stream error");
+      const c = out.candidates?.[0];
+      for (const p of c?.content?.parts ?? []) if (p.text && !p.thought) { wrote = true; emit(p.text); }
+      if (c?.finishReason === "MAX_TOKENS") stop = "max_tokens";
+      else if (c?.finishReason && !["STOP", "FINISH_REASON_UNSPECIFIED"].includes(c.finishReason)) stop = c.finishReason.toLowerCase();
+    });
+    if (!wrote) { last = `${model}: empty answer (${stop})`; continue; }
+    return stop;
+  }
+  throw new Error(last);
+}
+
+// ----- Pollinations (free, no account) -----
+async function viaPollinationsText(msg: string, emit: Emit, signal: AbortSignal): Promise<string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = Deno.env.get("POLLINATIONS_TOKEN");
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch("https://text.pollinations.ai/openai", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ model: "openai", stream: true, private: true, messages: [{ role: "system", content: SYSTEM }, { role: "user", content: msg }] }),
+    signal,
+  });
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+  let stop = "end_turn";
+  let wrote = false;
+  await readSSE(res, (data) => {
+    if (data === "[DONE]") return;
+    const out = JSON.parse(data) as { choices?: { delta?: { content?: string }; finish_reason?: string | null }[] };
+    const c = out.choices?.[0];
+    if (c?.delta?.content) { wrote = true; emit(c.delta.content); }
+    if (c?.finish_reason === "length") stop = "max_tokens";
+  });
+  if (!wrote) throw new Error("empty answer");
+  return stop;
 }
 
 // ---------- image: Gemini → Cloudflare → Pollinations ----------
@@ -186,25 +337,16 @@ const b64 = (buf: ArrayBuffer) => {
   return btoa(s);
 };
 
-let geminiModels: { at: number; names: string[] } | null = null;
 async function viaGemini(prompt: string, _kind?: string): Promise<Img | null> {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) return null;
-  const base = "https://generativelanguage.googleapis.com/v1beta";
-  if (!geminiModels || Date.now() - geminiModels.at > 6 * 3600_000) {
-    // Image model names change often, so ask Google which ones this key can use.
-    const res = await fetch(`${base}/models?pageSize=200&key=${key}`, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new Error(`list HTTP ${res.status}`);
-    const list = (await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
-    const names = (list.models ?? [])
-      .filter((m) => /image/i.test(m.name) && /gemini/i.test(m.name) && (m.supportedGenerationMethods ?? []).includes("generateContent"))
-      .map((m) => m.name.replace(/^models\//, ""))
-      .sort((a, b) => Number(/preview|exp/.test(a)) - Number(/preview|exp/.test(b)) || b.localeCompare(a));
-    geminiModels = { at: Date.now(), names };
-  }
+  const names = (await geminiModels())
+    .filter((m) => /image/i.test(m.name) && /gemini/i.test(m.name) && m.methods.includes("generateContent"))
+    .map((m) => m.name)
+    .sort((a, b) => Number(/preview|exp/.test(a)) - Number(/preview|exp/.test(b)) || b.localeCompare(a));
   let last = "no image model for this key";
-  for (const model of geminiModels.names.slice(0, 3)) {
-    const res = await fetch(`${base}/models/${model}:generateContent?key=${key}`, {
+  for (const model of names.slice(0, 3)) {
+    const res = await fetch(`${GEMINI}/models/${model}:generateContent?key=${key}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["IMAGE"] } }),

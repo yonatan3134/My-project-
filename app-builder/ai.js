@@ -86,7 +86,7 @@ export function createAI(cloud) {
         if (!chunk.startsWith('data: ')) continue;
         const ev = JSON.parse(chunk.slice(6));
         if (ev.t === 'text') onText(ev.v);
-        else if (ev.t === 'status') onStatus(ev.v);
+        else if (ev.t === 'status') onStatus(ev.v, ev.provider);
         else if (ev.t === 'done') ended = ev.stop;
         else if (ev.t === 'error') throw new Error(ev.v);
       }
@@ -117,12 +117,13 @@ export function createAI(cloud) {
     const { prompt, code = '', assets = {}, projectId, signal, onProgress } = opts;
     let text = '';
     let phase = 'thinking';
+    let provider = '';
     const images = {}; // id -> {status, url?, kind, description, error?}
     const jobs = [];
     let planSeen = false;
     const report = () => {
       const a = parseAnswer(text);
-      onProgress({ phase, text, message: a.message, html: a.html, images });
+      onProgress({ phase, provider, text, message: a.message, html: a.html, images });
     };
     const startImages = (plan) => {
       const style = plan.style || '';
@@ -151,7 +152,7 @@ export function createAI(cloud) {
       }
       report();
     };
-    const onStatus = (s) => { phase = s; report(); };
+    const onStatus = (s, who) => { phase = s; if (who) provider = who; report(); };
     const assetList = Object.entries(assets).map(([id, a]) => ({ id, kind: a.kind, description: a.description }));
 
     let ended = await streamOnce({ prompt, code, assets: assetList }, onText, onStatus, signal);
