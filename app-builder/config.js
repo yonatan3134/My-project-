@@ -2,4 +2,4 @@
 // the Row Level Security policies in supabase/schema.sql are what keep each user's data private.
 // Never put the secret / service_role key here.
 export const SUPABASE_URL = 'https://wkyytywpibqkhyysfrfy.supabase.co';
-export const SUPABASE_KEY = ''; // the "Publishable key" (sb_publishable_...) or legacy "anon public" key
+export const SUPABASE_KEY = 'sb_publishable_zapBMHmGuMYUgI0BwkQ-uA_qXaz9Pdw';
