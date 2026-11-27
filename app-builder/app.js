@@ -4,6 +4,7 @@ import { buildHtml } from './runtime.js';
 import { assist } from './assistant.js';
 import { TEMPLATES } from './templates.js';
 import { createCloud, errorText } from './cloud.js';
+import { createAI, withAssets, splitAssets, parseAnswer } from './ai.js';
 
 const PROJECTS_STORE = 'appBuilder.projects';
 const CURRENT_STORE = 'appBuilder.current';
@@ -52,6 +53,9 @@ const cloud = createCloud({
     if (state === 'saved') saveLocalOnly(); // remember which projects already reached the cloud
   },
 });
+const ai = createAI(cloud);
+let aiMode = !!ai && store.get('appBuilder.aiMode', false);
+let aiAbort = null;
 const userKey = (base) => (cloud?.user ? base + '.' + cloud.user.id : base);
 const normalize = (p) => ({ mode: p.blocks ? 'blocks' : 'code', messages: [], updated: 0, ...p });
 const readLocal = () => store.get(userKey(PROJECTS_STORE), []).map(normalize);
@@ -175,6 +179,9 @@ function loadProject(p) {
   els.codeHint.textContent = isCode ? 'עורכים כאן את הקוד ישירות' : 'הקוד נוצר אוטומטית מהבלוקים (קריאה בלבד)';
   loadBlocks(isCode ? null : p.blocks);
   if (isCode) els.code.value = p.html;
+  // a code project opens on its code; a blocks project on its blocks
+  const tab = document.querySelector(`[data-tab="${isCode ? 'code' : 'blocks'}"]`);
+  if (tab && !tab.classList.contains('on')) tab.click();
   render();
 }
 
@@ -192,10 +199,14 @@ function renderChat() {
   els.chat.innerHTML = '';
   const w = document.createElement('div');
   w.className = 'msg bot welcome';
-  w.innerHTML = '<b>היי! 👋 אני העוזר שלך</b>כתוב לי מה לבנות ואני אבנה את זה מבלוקים. אחר כך אפשר לגרור בלוקים ולשנות הכל, או לבקש ממני שינויים.';
+  w.innerHTML = aiMode
+    ? '<b>✨ מצב AI</b>תאר כל משחק, אפליקציה או אתר שבא לך. ה-AI כותב את הקוד ומצייר את הגרפיקה, ואחר כך אפשר לבקש ממנו שינויים. כדי להתחיל משהו חדש לוחצים ➕ חדש.'
+    : '<b>היי! 👋 אני העוזר שלך</b>כתוב לי מה לבנות ואני אבנה את זה מבלוקים. אחר כך אפשר לגרור בלוקים ולשנות הכל, או לבקש ממני שינויים.';
   const chips = document.createElement('div');
   chips.className = 'chips';
-  const ideas = ['משחק שתופסים פירות שנופלים', 'משחק ריצה עם דינוזאור', 'משחק יריות בחלל', 'משחק ציפור שעפה', 'משחק לאסוף מטבעות ולברוח', 'משחק להתחמק מאסטרואידים', 'חידון על חיות', 'אתר למסעדת פיצה', 'משחק זיכרון', 'מה אתה יודע?'];
+  const ideas = aiMode
+    ? ['משחק פלטפורמה עם נינג\'ה שקופץ בין עננים', 'משחק מרוץ מכוניות מלמעלה', 'משחק כדורגל נגד המחשב', 'משחק דרקון שיורק אש על טירות', 'אתר לחנות צעצועים', 'אפליקציה לתכנון שיעורי בית']
+    : ['משחק שתופסים פירות שנופלים', 'משחק ריצה עם דינוזאור', 'משחק יריות בחלל', 'משחק ציפור שעפה', 'משחק לאסוף מטבעות ולברוח', 'משחק להתחמק מאסטרואידים', 'חידון על חיות', 'אתר למסעדת פיצה', 'משחק זיכרון', 'מה אתה יודע?'];
   for (const idea of ideas) {
     const b = document.createElement('button');
     b.className = 'chip'; b.textContent = idea;
@@ -210,6 +221,7 @@ function renderChat() {
 function send(textArg) {
   const text = (textArg ?? els.prompt.value).trim();
   if (!text) return;
+  if (aiMode) { aiSend(text); return; }
   els.prompt.value = '';
 
   const blocksNow = current.mode === 'blocks' ? Blockly.serialization.workspaces.save(ws) : null;
@@ -249,6 +261,130 @@ function send(textArg) {
   addBubble('bot', result.reply);
   save();
 }
+
+// ---------- AI: Claude writes the code, an image AI draws the pictures ----------
+const PHASES = {
+  thinking: '🤔 ה-AI חושב על התכנון...',
+  writing: '✍️ כותב קוד',
+  continuing: '✍️ ממשיך לכתוב...',
+  drawing: '🎨 מסיים לצייר...',
+  done: '✅ מוכן!',
+};
+
+function progressBubble() {
+  const div = document.createElement('div');
+  div.className = 'msg bot ai-progress';
+  div.innerHTML = '<div class="ai-status"></div><div class="ai-message"></div><div class="ai-images"></div>';
+  els.chat.append(div);
+  return div;
+}
+
+function showProgress(bubble, p) {
+  const lines = p.html ? p.html.split('\n').length : 0;
+  bubble.querySelector('.ai-status').textContent = p.phase === 'writing' && lines ? `${PHASES.writing}... ${lines} שורות` : (PHASES[p.phase] || PHASES.thinking);
+  bubble.querySelector('.ai-message').textContent = p.message;
+  const box = bubble.querySelector('.ai-images');
+  for (const [id, img] of Object.entries(p.images)) {
+    let tile = box.querySelector(`[data-id="${CSS.escape(id)}"]`);
+    if (!tile) { tile = document.createElement('div'); tile.className = 'ai-img'; tile.dataset.id = id; box.append(tile); }
+    tile.className = 'ai-img ' + img.status;
+    tile.title = img.description + (img.error ? '\n⚠️ ' + img.error : '');
+    if (img.status === 'done' && !tile.querySelector('img')) { tile.innerHTML = ''; const im = document.createElement('img'); im.src = img.url; im.alt = id; tile.append(im); }
+    else if (img.status === 'drawing') tile.textContent = '🎨 ' + id;
+    else if (img.status === 'failed') tile.textContent = '⚠️ ' + id;
+  }
+  els.chat.scrollTop = els.chat.scrollHeight;
+}
+
+function setAiBusy(busy) {
+  $('sendBtn').disabled = busy;
+  $('stopBtn').hidden = !busy;
+}
+
+async function aiSend(text) {
+  if (aiAbort) return;
+  if (!cloud?.user) {
+    addBubble('bot', '👤 כדי להשתמש ב-AI צריך להתחבר (ההרשמה בחינם).');
+    openAuth('login');
+    return;
+  }
+  els.prompt.value = '';
+
+  // Changes go into the current AI/code project; anything else starts a new one, so blocks are never overwritten.
+  const fresh = current.mode !== 'code' || !current.html.trim() || /(^|\s)(חדש|חדשה)(\s|$)/.test(text);
+  let target = current;
+  if (fresh) {
+    if (isPristine(current)) Object.assign(current, { mode: 'code', blocks: null, html: '', name: 'פרויקט AI', untouched: false });
+    else target = createProject({ name: 'פרויקט AI', mode: 'code', html: '' });
+    loadProject(target);
+  }
+  const { code, assets } = fresh ? { code: '', assets: {} } : splitAssets(target.html);
+  target.messages.push({ role: 'user', text });
+  addBubble('user', text);
+  save(target);
+
+  const bubble = progressBubble();
+  aiAbort = new AbortController();
+  setAiBusy(true);
+  let previewed = false;
+  try {
+    const res = await ai.build({
+      prompt: text, code, assets, projectId: target.id, signal: aiAbort.signal,
+      onProgress: (p) => {
+        showProgress(bubble, p);
+        if (current === target && p.html) els.code.value = p.html;
+        // As soon as the code is complete, show it, even while pictures are still being drawn.
+        if (!previewed && p.phase === 'drawing' && current === target) {
+          previewed = true;
+          const done = { ...assets };
+          for (const [id, img] of Object.entries(p.images)) if (img.status === 'done') done[id] = img;
+          els.frame.srcdoc = withAssets(parseAnswer(p.text).html, done);
+          setMobileView('preview');
+        }
+      },
+    });
+    target.html = withAssets(res.code, res.assets);
+    const title = (res.code.match(/<title>([^<]{1,60})<\/title>/i) || [])[1];
+    if (title && ['פרויקט AI', 'פרויקט חדש'].includes(target.name)) target.name = title.trim();
+    const failed = Object.entries(res.images).filter(([, i]) => i.status === 'failed');
+    let reply = res.message || 'מוכן! ✨';
+    if (failed.length) reply += `\n⚠️ ${failed.length} ציורים לא הצליחו, אז המשחק משתמש בציור פשוט במקומם. אפשר לבקש "תצייר מחדש את ה${failed[0][0]}".`;
+    if (res.cut) reply += '\n⚠️ הקוד ארוך מאוד ונחתך. אפשר לבקש "תמשיך" או גרסה פשוטה יותר.';
+    target.messages.push({ role: 'bot', text: reply });
+    bubble.querySelector('.ai-status').textContent = PHASES.done;
+    bubble.querySelector('.ai-message').textContent = reply;
+    save(target);
+    if (current === target) { els.code.value = target.html; renderProjects(); els.frame.srcdoc = target.html; setMobileView('preview'); }
+  } catch (err) {
+    const msg = aiAbort?.signal.aborted ? 'הבנייה נעצרה.' : (err.message || String(err));
+    bubble.className = 'msg err';
+    bubble.textContent = '⚠️ ' + msg;
+    target.messages.push({ role: 'bot', text: '⚠️ ' + msg });
+    save(target);
+    if (current === target && !target.html.trim()) els.code.value = '';
+  } finally {
+    aiAbort = null;
+    setAiBusy(false);
+  }
+}
+
+function setAiMode(on) {
+  aiMode = !!ai && on;
+  store.set('appBuilder.aiMode', aiMode);
+  document.querySelectorAll('[data-ai]').forEach(b => b.classList.toggle('on', (b.dataset.ai === 'on') === aiMode));
+  els.prompt.placeholder = aiMode ? 'תאר כל משחק או אפליקציה... למשל: משחק נינג\'ה שקופץ בין גגות' : 'מה לבנות? למשל: משחק שתופסים בו חתולים';
+  if (current) renderChat();
+}
+
+function setMobileView(view) {
+  const b = document.querySelector(`[data-view="${view}"]`);
+  if (b && getComputedStyle(document.querySelector('nav.mobile')).display !== 'none') b.click();
+}
+
+$('aiTab').hidden = !ai;
+document.querySelectorAll('[data-ai]').forEach(b => b.onclick = () => setAiMode(b.dataset.ai === 'on'));
+$('stopBtn').onclick = () => aiAbort?.abort();
+setAiMode(aiMode);
 
 // ---------- wiring ----------
 $('sendBtn').onclick = () => send();

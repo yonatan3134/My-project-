@@ -48,6 +48,15 @@ main { display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(320px, 
 .welcome { white-space: normal; }
 .welcome b { display: block; font-size: 1.05rem; margin-bottom: 4px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.msg.ai-progress { white-space: normal; min-width: 70%; }
+.ai-status { font-weight: 700; margin-bottom: 4px; }
+.ai-message { white-space: pre-wrap; margin: 4px 0; }
+.ai-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ai-img { width: 64px; height: 64px; border-radius: 12px; background: repeating-conic-gradient(#e9e5f7 0 25%, #fff 0 50%) 0 0 / 12px 12px; display: grid; place-items: center; font-size: .7rem; text-align: center; overflow: hidden; border: 1px solid var(--line); color: #555; }
+.ai-img img { max-width: 100%; max-height: 100%; }
+.ai-img.drawing { animation: ai-pulse 1s ease-in-out infinite alternate; }
+@keyframes ai-pulse { from { opacity: .5; } to { opacity: 1; } }
+.msg.err { align-self: stretch; background: #ffe5e6; color: #8a1c20; }
 .chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 11px; font-size: .88rem; }
 .chip:hover { border-color: var(--pri); }
 .composer { padding: 10px; border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: flex-end; }
@@ -123,10 +132,16 @@ nav.mobile { display: none; }
 
   <main id="main" class="v-assistant">
     <section class="panel assistant">
-      <div class="panel-head"><h2>🤖 העוזר</h2></div>
+      <div class="panel-head">
+        <div class="tabs" id="aiTabs">
+          <button data-ai="off" class="on" title="עוזר שבונה מבלוקים, בלי אינטרנט">🧩 עוזר בלוקים</button>
+          <button data-ai="on" id="aiTab" hidden title="AI שכותב קוד ומצייר גרפיקה">✨ AI</button>
+        </div>
+      </div>
       <div class="chat" id="chat"></div>
       <div class="composer">
         <textarea id="prompt" rows="2" placeholder="מה לבנות? למשל: משחק שתופסים בו חתולים"></textarea>
+        <button class="btn-ghost btn-danger" id="stopBtn" hidden title="עצור">⏹</button>
         <button class="btn" id="sendBtn">🚀</button>
       </div>
     </section>
