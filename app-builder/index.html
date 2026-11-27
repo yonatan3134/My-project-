@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>בונה האפליקציות</title>
+<style>
+:root {
+  --bg: #f4f2ff; --card: #fff; --ink: #17132e; --muted: #6b6690; --line: #e3def8; --soft: #efebff;
+  --pri: #6a4cff; --pri2: #a36bff; --bad: #e5484d;
+  --r: 16px; --shadow: 0 6px 22px rgba(70, 40, 170, .10);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #120f22; --card: #1d1934; --ink: #f1eeff; --muted: #a29cc8; --line: #2f2a52; --soft: #262046; --shadow: 0 6px 22px rgba(0,0,0,.35); }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+  font-family: system-ui, "Segoe UI", Roboto, "Noto Sans Hebrew", Arial, sans-serif; font-size: 16px; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+
+.app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; height: 100dvh; }
+header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--card); box-shadow: var(--shadow); z-index: 2; flex-wrap: wrap; }
+header h1 { margin: 0 0 0 8px; font-size: 1.2rem; white-space: nowrap; background: linear-gradient(90deg, var(--pri), var(--pri2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.project-bar { display: flex; gap: 6px; flex: 1; min-width: 240px; max-width: 560px; }
+.project-bar select { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 7px; background: var(--soft); }
+.btn { border: none; border-radius: 12px; padding: 9px 16px; background: linear-gradient(135deg, var(--pri), var(--pri2)); color: #fff; font-weight: 700; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-ghost { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 7px 11px; white-space: nowrap; }
+.btn-ghost:hover { border-color: var(--pri); }
+.btn-danger { color: var(--bad); }
+
+main { display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(320px, 34%); min-height: 0; }
+.panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.assistant { background: var(--card); border-left: 1px solid var(--line); }
+.work { border-left: 1px solid var(--line); }
+.preview { padding: 10px; gap: 8px; }
+.panel-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--card); flex-wrap: wrap; }
+.panel-head h2 { margin: 0; font-size: 1rem; }
+.panel-head .grow { flex: 1; }
+
+.chat { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.msg { padding: 9px 12px; border-radius: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-width: 96%; font-size: .95rem; }
+.msg.user { align-self: flex-start; background: linear-gradient(135deg, var(--pri), var(--pri2)); color: #fff; }
+.msg.bot { align-self: flex-end; background: var(--soft); }
+.welcome { white-space: normal; }
+.welcome b { display: block; font-size: 1.05rem; margin-bottom: 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 11px; font-size: .88rem; }
+.chip:hover { border-color: var(--pri); }
+.composer { padding: 10px; border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: flex-end; }
+.composer textarea { flex: 1; min-height: 46px; max-height: 160px; resize: vertical; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--soft); }
+
+.tabs { display: inline-flex; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+.tabs button { border: none; background: none; padding: 5px 11px; border-radius: 9px; white-space: nowrap; }
+.tabs button.on { background: var(--pri); color: #fff; }
+
+.blockly-wrap { flex: 1; position: relative; min-height: 0; }
+#blockly { position: absolute; inset: 0; }
+.code-note { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; background: var(--bg); color: var(--muted); z-index: 5; }
+.code-note .big { font-size: 3rem; }
+#code { flex: 1; min-height: 0; width: 100%; resize: none; border: none; padding: 12px; margin: 0;
+  background: #15122a; color: #e9e5ff; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; direction: ltr; text-align: left; tab-size: 2; }
+#code[readonly] { color: #c9c3ea; }
+.code-bar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: #15122a; color: #a9a3d0; font-size: .85rem; }
+.code-bar .grow { flex: 1; }
+.code-bar .btn-ghost { background: #241e44; color: #fff; border-color: #3a3363; }
+
+.toolbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.toolbar .grow { flex: 1; }
+.frame-wrap { flex: 1; min-height: 0; display: flex; justify-content: center; background: var(--soft); border-radius: var(--r); padding: 8px; }
+.frame-wrap iframe { width: 100%; height: 100%; border: none; border-radius: 12px; background: #fff; box-shadow: var(--shadow); transition: width .25s; }
+.frame-wrap.phone iframe { width: 375px; max-width: 100%; }
+
+header .sync { font-size: .85rem; color: var(--muted); white-space: nowrap; margin-inline-start: auto; }
+header .sync.bad { color: var(--bad); cursor: help; }
+header .account { font-weight: 700; color: var(--pri); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+dialog { border: none; border-radius: 20px; padding: 22px; width: min(420px, calc(100vw - 32px)); background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+dialog::backdrop { background: rgba(10, 5, 30, .55); }
+dialog h3 { margin: 0 0 6px; font-size: 1.25rem; }
+dialog .note { margin: 0 0 14px; color: var(--muted); font-size: .92rem; line-height: 1.5; }
+dialog form { display: grid; gap: 10px; }
+dialog input { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: var(--soft); }
+dialog input[type=email] { direction: ltr; text-align: right; }
+dialog .err { color: var(--bad); font-size: .92rem; min-height: 0; margin: 0; }
+dialog .ok { color: #19a974; font-size: .92rem; margin: 0; line-height: 1.5; }
+dialog .links { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+dialog .link { border: none; background: none; color: var(--pri); padding: 4px 0; font-size: .92rem; }
+dialog .who { font-weight: 700; direction: ltr; text-align: right; margin: 0 0 14px; word-break: break-all; }
+dialog .close { position: absolute; top: 12px; left: 12px; border: none; background: none; font-size: 1.2rem; color: var(--muted); }
+dialog p:empty { display: none; }
+
+nav.mobile { display: none; }
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; }
+  main > .panel { display: none; }
+  main.v-assistant .assistant, main.v-work .work, main.v-preview .preview { display: flex; }
+  .assistant, .work { border-left: none; }
+  nav.mobile { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  nav.mobile button { border: none; background: none; padding: 10px 4px; font-size: .9rem; }
+  nav.mobile button.on { color: var(--pri); font-weight: 700; }
+  header h1 { font-size: 1.05rem; }
+  .hide-mobile { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>✨ בונה האפליקציות</h1>
+    <div class="project-bar">
+      <select id="projectSelect" aria-label="הפרויקטים שלי"></select>
+      <button class="btn-ghost" id="newBtn" title="פרויקט חדש">➕ חדש</button>
+      <button class="btn-ghost" id="renameBtn" title="שינוי שם">✏️</button>
+      <button class="btn-ghost btn-danger" id="deleteBtn" title="מחיקה">🗑️</button>
+    </div>
+    <span class="sync" id="syncStatus"></span>
+    <button class="btn-ghost account" id="accountBtn" hidden>👤 התחברות</button>
+  </header>
+
+  <main id="main" class="v-assistant">
+    <section class="panel assistant">
+      <div class="panel-head"><h2>🤖 העוזר</h2></div>
+      <div class="chat" id="chat"></div>
+      <div class="composer">
+        <textarea id="prompt" rows="2" placeholder="מה לבנות? למשל: משחק שתופסים בו חתולים"></textarea>
+        <button class="btn" id="sendBtn">🚀</button>
+      </div>
+    </section>
+
+    <section class="panel work">
+      <div class="panel-head">
+        <div class="tabs">
+          <button data-tab="blocks" class="on">🧩 בלוקים</button>
+          <button data-tab="code">&lt;/&gt; קוד</button>
+        </div>
+        <div class="grow"></div>
+        <button class="btn-ghost" id="undoBtn" title="בטל">↩️</button>
+        <button class="btn-ghost" id="redoBtn" title="בצע שוב">↪️</button>
+        <button class="btn-ghost" id="tidyBtn" title="סדר את הבלוקים">🧹 סדר</button>
+      </div>
+      <div class="blockly-wrap" id="blocksPane">
+        <div id="blockly"></div>
+        <div class="code-note" id="codeNote" hidden>
+          <div><div class="big">&lt;/&gt;</div>
+            <p>הפרויקט הזה כתוב בקוד, לא בבלוקים.<br>אפשר לערוך אותו בלשונית "קוד".</p>
+            <button class="btn" id="newBlocksBtn">🧩 פרויקט בלוקים חדש</button></div>
+        </div>
+      </div>
+      <div class="panel" id="codePane" hidden style="flex:1">
+        <div class="code-bar">
+          <span id="codeHint"></span><span class="grow"></span>
+          <button class="btn-ghost" id="toCodeBtn">✂️ המר לקוד חופשי</button>
+        </div>
+        <textarea id="code" spellcheck="false"></textarea>
+      </div>
+    </section>
+
+    <section class="panel preview">
+      <div class="toolbar">
+        <div class="tabs">
+          <button data-device="desktop" class="on" title="מחשב">💻</button>
+          <button data-device="phone" title="טלפון">📱</button>
+        </div>
+        <div class="grow"></div>
+        <button class="btn-ghost" id="runBtn" title="הפעל מחדש">🔄</button>
+        <button class="btn-ghost" id="openBtn" title="פתח בלשונית חדשה">↗️ פתח</button>
+        <button class="btn-ghost" id="downloadBtn" title="הורד כקובץ">⬇️ הורד</button>
+      </div>
+      <div class="frame-wrap" id="frameWrap">
+        <iframe id="frame" title="תצוגה מקדימה" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>
+      </div>
+    </section>
+  </main>
+
+  <nav class="mobile">
+    <button data-view="assistant" class="on">🤖 עוזר</button>
+    <button data-view="work">🧩 בלוקים</button>
+    <button data-view="preview">👀 תוצאה</button>
+  </nav>
+</div>
+
+<dialog id="authDialog">
+  <button class="close" id="authClose" title="סגור" aria-label="סגור">✕</button>
+  <h3 id="authTitle">👤 התחברות</h3>
+  <p class="note" id="authNote"></p>
+  <p class="who" id="authWho"></p>
+  <form id="authForm" novalidate>
+    <input type="email" id="authEmail" placeholder="המייל שלך" autocomplete="email" required>
+    <input type="password" id="authPass" placeholder="סיסמה (לפחות 6 תווים)" autocomplete="current-password" minlength="6">
+    <p class="err" id="authErr" role="alert"></p>
+    <p class="ok" id="authOk" role="status"></p>
+    <button class="btn" id="authSubmit" type="submit">התחבר</button>
+    <div class="links">
+      <button class="link" id="authAlt" type="button">אין לך חשבון? להרשמה</button>
+      <button class="link" id="authForgot" type="button">שכחתי סיסמה</button>
+    </div>
+  </form>
+  <button class="btn-ghost btn-danger" id="authSignOut" hidden>🚪 התנתק</button>
+</dialog>
+
+<script src="vendor/supabase/supabase.js"></script>
+<script src="vendor/blockly/blockly_compressed.js"></script>
+<script src="vendor/blockly/blocks_compressed.js"></script>
+<script src="vendor/blockly/javascript_compressed.js"></script>
+<script src="vendor/blockly/msg/he.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
