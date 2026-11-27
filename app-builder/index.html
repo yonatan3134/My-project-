@@ -74,6 +74,25 @@ main { display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(320px, 
 .frame-wrap iframe { width: 100%; height: 100%; border: none; border-radius: 12px; background: #fff; box-shadow: var(--shadow); transition: width .25s; }
 .frame-wrap.phone iframe { width: 375px; max-width: 100%; }
 
+header .sync { font-size: .85rem; color: var(--muted); white-space: nowrap; margin-inline-start: auto; }
+header .sync.bad { color: var(--bad); cursor: help; }
+header .account { font-weight: 700; color: var(--pri); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+dialog { border: none; border-radius: 20px; padding: 22px; width: min(420px, calc(100vw - 32px)); background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+dialog::backdrop { background: rgba(10, 5, 30, .55); }
+dialog h3 { margin: 0 0 6px; font-size: 1.25rem; }
+dialog .note { margin: 0 0 14px; color: var(--muted); font-size: .92rem; line-height: 1.5; }
+dialog form { display: grid; gap: 10px; }
+dialog input { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: var(--soft); }
+dialog input[type=email] { direction: ltr; text-align: right; }
+dialog .err { color: var(--bad); font-size: .92rem; min-height: 0; margin: 0; }
+dialog .ok { color: #19a974; font-size: .92rem; margin: 0; line-height: 1.5; }
+dialog .links { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+dialog .link { border: none; background: none; color: var(--pri); padding: 4px 0; font-size: .92rem; }
+dialog .who { font-weight: 700; direction: ltr; text-align: right; margin: 0 0 14px; word-break: break-all; }
+dialog .close { position: absolute; top: 12px; left: 12px; border: none; background: none; font-size: 1.2rem; color: var(--muted); }
+dialog p:empty { display: none; }
+
 nav.mobile { display: none; }
 @media (max-width: 900px) {
   main { grid-template-columns: 1fr; }
@@ -98,6 +117,8 @@ nav.mobile { display: none; }
       <button class="btn-ghost" id="renameBtn" title="שינוי שם">✏️</button>
       <button class="btn-ghost btn-danger" id="deleteBtn" title="מחיקה">🗑️</button>
     </div>
+    <span class="sync" id="syncStatus"></span>
+    <button class="btn-ghost account" id="accountBtn" hidden>👤 התחברות</button>
   </header>
 
   <main id="main" class="v-assistant">
@@ -162,6 +183,26 @@ nav.mobile { display: none; }
   </nav>
 </div>
 
+<dialog id="authDialog">
+  <button class="close" id="authClose" title="סגור" aria-label="סגור">✕</button>
+  <h3 id="authTitle">👤 התחברות</h3>
+  <p class="note" id="authNote"></p>
+  <p class="who" id="authWho"></p>
+  <form id="authForm" novalidate>
+    <input type="email" id="authEmail" placeholder="המייל שלך" autocomplete="email" required>
+    <input type="password" id="authPass" placeholder="סיסמה (לפחות 6 תווים)" autocomplete="current-password" minlength="6">
+    <p class="err" id="authErr" role="alert"></p>
+    <p class="ok" id="authOk" role="status"></p>
+    <button class="btn" id="authSubmit" type="submit">התחבר</button>
+    <div class="links">
+      <button class="link" id="authAlt" type="button">אין לך חשבון? להרשמה</button>
+      <button class="link" id="authForgot" type="button">שכחתי סיסמה</button>
+    </div>
+  </form>
+  <button class="btn-ghost btn-danger" id="authSignOut" hidden>🚪 התנתק</button>
+</dialog>
+
+<script src="vendor/supabase/supabase.js"></script>
 <script src="vendor/blockly/blockly_compressed.js"></script>
 <script src="vendor/blockly/blocks_compressed.js"></script>
 <script src="vendor/blockly/javascript_compressed.js"></script>

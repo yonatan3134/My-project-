@@ -3,6 +3,7 @@ import { TOOLBOX, generateCode, pageTitle } from './blocks.js';
 import { buildHtml } from './runtime.js';
 import { assist } from './assistant.js';
 import { TEMPLATES } from './templates.js';
+import { createCloud, errorText } from './cloud.js';
 
 const PROJECTS_STORE = 'appBuilder.projects';
 const CURRENT_STORE = 'appBuilder.current';
@@ -28,7 +29,7 @@ const STARTER = {
 };
 
 // ---------- state ----------
-let projects = store.get(PROJECTS_STORE, []).map(p => ({ mode: p.blocks ? 'blocks' : 'code', messages: [], ...p }));
+let projects = [];
 let current = null;
 let loading = false;
 let renderTimer = null;
@@ -38,7 +39,24 @@ const els = {
   main: $('main'), chat: $('chat'), prompt: $('prompt'), select: $('projectSelect'),
   frame: $('frame'), frameWrap: $('frameWrap'), code: $('code'), codeHint: $('codeHint'),
   blocksPane: $('blocksPane'), codePane: $('codePane'), codeNote: $('codeNote'), toCodeBtn: $('toCodeBtn'),
+  accountBtn: $('accountBtn'), sync: $('syncStatus'), auth: $('authDialog'),
 };
+
+// ---------- cloud ----------
+const SYNC_TEXT = { pending: '⏳', saving: '☁️ שומר...', saved: '☁️ נשמר', error: '⚠️ לא נשמר' };
+const cloud = createCloud({
+  onStatus(state, detail) {
+    els.sync.textContent = SYNC_TEXT[state] || '';
+    els.sync.title = state === 'error' ? detail + '\nהפרויקט שמור במכשיר, ננסה שוב בעוד רגע' : '';
+    els.sync.classList.toggle('bad', state === 'error');
+    if (state === 'saved') saveLocalOnly(); // remember which projects already reached the cloud
+  },
+});
+const userKey = (base) => (cloud?.user ? base + '.' + cloud.user.id : base);
+const normalize = (p) => ({ mode: p.blocks ? 'blocks' : 'code', messages: [], updated: 0, ...p });
+const readLocal = () => store.get(userKey(PROJECTS_STORE), []).map(normalize);
+// An untouched starter project: nothing worth keeping in it yet.
+const isPristine = (p) => !!p.untouched && !p.messages.length;
 
 const ws = Blockly.inject('blockly', {
   toolbox: TOOLBOX,
@@ -67,16 +85,23 @@ function showStart() {
 function newId() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 
 function createProject({ name = 'פרויקט חדש', mode = 'blocks', blocks = STARTER, html = '' } = {}) {
-  const p = { id: newId(), name, mode, blocks: mode === 'blocks' ? JSON.parse(JSON.stringify(blocks)) : null, html, messages: [], updated: Date.now() };
+  const p = { id: newId(), name, mode, blocks: mode === 'blocks' ? JSON.parse(JSON.stringify(blocks)) : null, html, messages: [], updated: Date.now(), untouched: blocks === STARTER && mode === 'blocks' };
   projects.unshift(p);
-  save();
+  save(p);
   return p;
 }
 
-function save() {
-  if (current) current.updated = Date.now();
-  store.set(PROJECTS_STORE, projects);
-  if (current) store.set(CURRENT_STORE, current.id);
+function save(p = current) {
+  if (p) {
+    p.updated = Date.now();
+    if (!isPristine(p)) cloud?.queue(p); // an untouched starter project doesn't need to reach the cloud
+  }
+  store.set(userKey(PROJECTS_STORE), projects);
+  if (current) store.set(userKey(CURRENT_STORE), current.id);
+}
+
+function saveLocalOnly() {
+  store.set(userKey(PROJECTS_STORE), projects);
 }
 
 // ---------- building the app ----------
@@ -102,6 +127,7 @@ function scheduleRender() {
 ws.addChangeListener((e) => {
   if (loading || e.isUiEvent || !current || current.mode !== 'blocks') return;
   current.blocks = Blockly.serialization.workspaces.save(ws);
+  delete current.untouched;
   const title = pageTitle(ws);
   if (current.name === 'פרויקט חדש' && title && title !== 'האפליקציה שלי') { current.name = title; renderProjects(); }
   save();
@@ -122,6 +148,7 @@ function renderProjects() {
 
 function loadBlocks(json) {
   loading = true;
+  Blockly.Events.disable(); // loading isn't a change by the user
   try {
     ws.clear();
     if (json) Blockly.serialization.workspaces.load(json, ws);
@@ -129,6 +156,7 @@ function loadBlocks(json) {
     console.error(err);
     addBubble('bot', '⚠️ חלק מהבלוקים לא נטענו.');
   } finally {
+    Blockly.Events.enable();
     loading = false;
   }
   ws.clearUndo();
@@ -137,7 +165,7 @@ function loadBlocks(json) {
 
 function loadProject(p) {
   current = p;
-  store.set(CURRENT_STORE, p.id);
+  store.set(userKey(CURRENT_STORE), p.id);
   renderProjects();
   renderChat();
   const isCode = p.mode === 'code';
@@ -185,7 +213,7 @@ function send(textArg) {
   els.prompt.value = '';
 
   const blocksNow = current.mode === 'blocks' ? Blockly.serialization.workspaces.save(ws) : null;
-  const pristine = current.mode === 'blocks' && JSON.stringify(current.blocks) === JSON.stringify(STARTER);
+  const pristine = isPristine(current);
   const result = assist(text, pristine ? null : blocksNow);
 
   // A brand-new app goes into a new project, so nothing the user made gets overwritten.
@@ -195,11 +223,11 @@ function send(textArg) {
     if (result.code) {
       const tpl = TEMPLATES.find(t => t.id === result.code);
       if (keep) target = createProject({ name: tpl.name.replace(/^\S+\s/, ''), mode: 'code', html: tpl.html });
-      else Object.assign(target, { name: tpl.name.replace(/^\S+\s/, ''), mode: 'code', blocks: null, html: tpl.html });
+      else Object.assign(target, { name: tpl.name.replace(/^\S+\s/, ''), mode: 'code', blocks: null, html: tpl.html, untouched: false });
     } else {
       const title = result.workspace.blocks.blocks.find(b => b.type === 'ui_page')?.fields?.TITLE || 'פרויקט חדש';
       if (keep) target = createProject({ name: title, blocks: result.workspace });
-      else Object.assign(target, { name: title, mode: 'blocks', blocks: result.workspace });
+      else Object.assign(target, { name: title, mode: 'blocks', blocks: result.workspace, untouched: false });
     }
     target.messages.push({ role: 'user', text }, { role: 'bot', text: result.reply + (keep ? '\n\n(שמרתי את זה כפרויקט חדש, הפרויקט הקודם נשאר ברשימה)' : '') });
     save();
@@ -236,13 +264,15 @@ $('newBtn').onclick = () => loadProject(createProject());
 $('newBlocksBtn').onclick = () => loadProject(createProject());
 $('renameBtn').onclick = () => {
   const name = prompt('שם חדש לפרויקט:', current.name);
-  if (name && name.trim()) { current.name = name.trim(); save(); renderProjects(); }
+  if (name && name.trim()) { current.name = name.trim(); delete current.untouched; save(); renderProjects(); }
 };
 $('deleteBtn').onclick = () => {
   if (!confirm(`למחוק את "${current.name}"?`)) return;
-  projects = projects.filter(p => p.id !== current.id);
+  const gone = current.id;
+  projects = projects.filter(p => p.id !== gone);
+  cloud?.remove(gone);
   if (!projects.length) createProject();
-  save();
+  saveLocalOnly();
   loadProject(projects[0]);
 };
 
@@ -303,7 +333,168 @@ $('openBtn').onclick = () => {
   win.document.body.append(frame);
 };
 
+// ---------- accounts & syncing ----------
+function openSaved() {
+  if (!projects.length) createProject();
+  const savedId = store.get(userKey(CURRENT_STORE), null);
+  loadProject(projects.find(p => p.id === savedId) || projects[0]);
+}
+
+// Projects made before signing in move into the account, so nothing is lost.
+function adoptGuestProjects() {
+  const guest = store.get(PROJECTS_STORE, []).map(normalize).filter(p => !isPristine(p));
+  if (!guest.length) return 0;
+  const have = new Set(projects.map(p => p.id));
+  for (const p of guest) if (!have.has(p.id)) { p.synced = false; projects.push(p); }
+  store.set(PROJECTS_STORE, []);
+  saveLocalOnly();
+  return guest.length;
+}
+
+async function syncFromCloud() {
+  let remote;
+  try {
+    remote = await cloud.list();
+  } catch (err) {
+    els.sync.textContent = SYNC_TEXT.error;
+    els.sync.title = errorText(err);
+    return;
+  }
+  const remoteById = new Map(remote.map(r => [r.id, { ...r, synced: true }]));
+  const merged = [];
+  const toUpload = [];
+  for (const l of projects) {
+    const r = remoteById.get(l.id);
+    if (r) { merged.push(r.updated >= l.updated ? r : l); if (l.updated > r.updated) toUpload.push(l); remoteById.delete(l.id); }
+    else if (l.synced) { /* deleted on another device */ }
+    else if (!isPristine(l) || !remote.length) { merged.push(l); if (!isPristine(l)) toUpload.push(l); }
+  }
+  merged.push(...remoteById.values());
+  merged.sort((a, b) => b.updated - a.updated);
+  const currentId = current?.id;
+  const before = current;
+  projects = merged;
+  if (toUpload.length) {
+    els.sync.textContent = SYNC_TEXT.saving;
+    const error = await cloud.upload(toUpload);
+    if (error) { els.sync.textContent = SYNC_TEXT.error; els.sync.title = errorText(error); }
+    else { toUpload.forEach(p => { p.synced = true; }); els.sync.textContent = SYNC_TEXT.saved; }
+  } else els.sync.textContent = SYNC_TEXT.saved;
+  saveLocalOnly();
+  const same = projects.find(p => p.id === currentId);
+  if (!same) openSaved();
+  else if (same !== before) loadProject(same);
+  else renderProjects();
+}
+
+async function setUser(user) {
+  cloud.setUser(user);
+  els.sync.textContent = '';
+  els.sync.title = '';
+  projects = readLocal();
+  const moved = user ? adoptGuestProjects() : 0;
+  openSaved();
+  renderAccount();
+  if (user) {
+    await syncFromCloud();
+    if (moved) addBubble('bot', `☁️ העברתי ${moved} פרויקטים לחשבון שלך. עכשיו הם יופיעו בכל מכשיר שתתחבר ממנו.`);
+  }
+}
+
+function renderAccount() {
+  els.accountBtn.hidden = !cloud;
+  const u = cloud?.user;
+  els.accountBtn.textContent = u ? '👤 ' + u.email.split('@')[0] : '👤 התחברות';
+  els.accountBtn.title = u ? u.email : 'התחברות ושמירה בענן';
+}
+
+// ----- the sign-in dialog -----
+const A = {
+  title: $('authTitle'), note: $('authNote'), email: $('authEmail'), pass: $('authPass'), err: $('authErr'),
+  ok: $('authOk'), submit: $('authSubmit'), alt: $('authAlt'), forgot: $('authForgot'), signOut: $('authSignOut'),
+  form: $('authForm'), who: $('authWho'),
+};
+let authMode = 'login';
+const AUTH_MODES = {
+  login: { title: '👤 התחברות', submit: 'התחבר', alt: 'אין לך חשבון? להרשמה', note: 'מתחברים כדי לשמור את הפרויקטים בענן ולפתוח אותם מכל מכשיר.' },
+  signup: { title: '✨ הרשמה', submit: 'צור חשבון', alt: 'כבר יש לך חשבון? להתחברות', note: 'ההרשמה בחינם. אחרי ההרשמה יגיע אליך מייל לאישור.' },
+  reset: { title: '🔑 שכחתי סיסמה', submit: 'שלח לי קישור', alt: 'חזרה להתחברות', note: 'נשלח לך מייל עם קישור לבחירת סיסמה חדשה.' },
+  newpass: { title: '🔑 סיסמה חדשה', submit: 'שמור סיסמה', alt: '', note: 'בחר סיסמה חדשה לחשבון שלך.' },
+  account: { title: '👤 החשבון שלי', submit: '', alt: '', note: 'הפרויקטים שלך נשמרים בענן ויופיעו בכל מכשיר שתתחבר ממנו.' },
+};
+function openAuth(mode) {
+  authMode = mode;
+  const m = AUTH_MODES[mode];
+  A.title.textContent = m.title;
+  A.note.textContent = m.note;
+  A.err.textContent = ''; A.ok.textContent = '';
+  A.form.hidden = mode === 'account';
+  A.email.hidden = mode === 'newpass';
+  A.pass.hidden = mode === 'reset';
+  A.pass.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+  A.submit.textContent = m.submit;
+  A.alt.textContent = m.alt; A.alt.hidden = !m.alt;
+  A.forgot.hidden = mode !== 'login';
+  A.signOut.hidden = mode !== 'account';
+  A.who.textContent = mode === 'account' ? cloud.user.email : '';
+  if (!els.auth.open) els.auth.showModal();
+  setTimeout(() => (mode === 'newpass' ? A.pass : A.email).focus(), 50);
+}
+
+els.accountBtn.onclick = () => openAuth(cloud.user ? 'account' : 'login');
+A.alt.onclick = () => openAuth(authMode === 'login' ? 'signup' : 'login');
+A.forgot.onclick = () => openAuth('reset');
+$('authClose').onclick = () => els.auth.close();
+A.signOut.onclick = async () => {
+  A.signOut.disabled = true;
+  const error = await cloud.signOut();
+  A.signOut.disabled = false;
+  if (error) { A.err.textContent = errorText(error); return; }
+  els.auth.close();
+};
+A.form.onsubmit = async (e) => {
+  e.preventDefault();
+  const email = A.email.value.trim();
+  const password = A.pass.value;
+  A.err.textContent = ''; A.ok.textContent = '';
+  if (authMode !== 'newpass' && !/^\S+@\S+\.\S+$/.test(email)) { A.err.textContent = 'כתוב כתובת מייל תקינה'; return; }
+  if (authMode !== 'reset' && password.length < 6) { A.err.textContent = 'הסיסמה צריכה להיות לפחות 6 תווים'; return; }
+  A.submit.disabled = true;
+  try {
+    if (authMode === 'login') {
+      const error = await cloud.signIn(email, password);
+      if (error) A.err.textContent = errorText(error); else els.auth.close();
+    } else if (authMode === 'signup') {
+      const res = await cloud.signUp(email, password);
+      if (res.error) A.err.textContent = errorText(res.error);
+      else if (res.needsConfirm) A.ok.textContent = '📧 שלחנו לך מייל. לחץ על הקישור שבו כדי לאשר את החשבון, ואז התחבר.';
+      else els.auth.close();
+    } else if (authMode === 'reset') {
+      const error = await cloud.resetPassword(email);
+      if (error) A.err.textContent = errorText(error); else A.ok.textContent = '📧 אם יש חשבון עם המייל הזה, נשלח אליו קישור.';
+    } else if (authMode === 'newpass') {
+      const error = await cloud.newPassword(password);
+      if (error) A.err.textContent = errorText(error); else { A.ok.textContent = '✅ הסיסמה עודכנה'; setTimeout(() => els.auth.close(), 1200); }
+    }
+  } finally {
+    A.submit.disabled = false;
+  }
+};
+
 // ---------- start ----------
-if (!projects.length) createProject();
-const savedId = store.get(CURRENT_STORE, null);
-loadProject(projects.find(p => p.id === savedId) || projects[0]);
+async function start() {
+  if (cloud) {
+    let user = null;
+    try { user = await cloud.session(); } catch { /* offline: keep working locally */ }
+    await setUser(user);
+    cloud.onAuth((event, u) => {
+      if ((u?.id ?? null) !== (cloud.user?.id ?? null)) setUser(u).then(() => { if (event === 'PASSWORD_RECOVERY') openAuth('newpass'); });
+      else if (event === 'PASSWORD_RECOVERY') openAuth('newpass');
+    });
+  } else {
+    projects = readLocal();
+    openSaved();
+    renderAccount();
+  }
+}
+start();
